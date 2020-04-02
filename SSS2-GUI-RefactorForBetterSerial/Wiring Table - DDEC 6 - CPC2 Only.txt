@@ -1,0 +1,25 @@
+Molex Pins	Color	Application	ECU Pins
+J18:15	RED/BLK	CAN2L	Blue CPC4-1
+J18:16	WHT/RED	CAN2H	Blue CPC4-3
+J24:01	PPL/WHT	Idle Validation 2 (Throttle active)	White CPC1-3
+J24:02	BRN/WHT	Multiple Applications	White CPC1-1
+J24:03	YEL/BLK	Vehicle Speed (-)	Brown CPC3-14
+J24:04	PNK/BLK	Vehicle Speed (+)	Brown CPC3-13
+J24:05	BLUE	Throttle Position Supply	White CPC1-8
+J24:06	GRN/BLK	Accelerator Pedal Position 1	White CPC1-7
+J24:07	ORN/BLK	Idle Validation 1 (Idle active)	White CPC1-6
+J24:08	YEL/RED	Multiple Applications	Blue CPC4-5
+J24:11	BLU/WHT	Multiple Applications	Brown CPC3-5
+J24:12	TAN/BLK	Throttle Position Return	White CPC1-4
+J24:13	BROWN	Multiple Applications	White CPC1-17
+J24:14	BLK/WHT	Multiple Applications	Blue CPC4-15
+J24:15	GRN/WHT	Engine Coolant Level	Brown CPC3-11
+J24:16	TAN/RED	K-LINE	Gray CPC2-4
+J24:17	PURPLE	CAN2L/J1708-	Gray CPC2-5
+J24:18	PINK	CAN2H/J1708+	Gray CPC2-6
+J24:19	TAN	Multiple Applications	Blue CPC4-4
+J24:20	ORANGE	Ignition	Gray CPC2-3
+J24:21	GREEN	J1939L	Gray CPC2-16
+J24:22	YELLOW	J1939H	Gray CPC2-18
+J24:23	RED	+12V Out	Gray CPC2-1
+J24:24	BLACK	Ground	Gray CPC2-2

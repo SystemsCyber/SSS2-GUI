@@ -1,0 +1,43 @@
+Molex Pins	Color	Application	ECU Pins
+J18:01	PPL/WHT	Application Description	ECU Pins
+J18:02	BRN/WHT	Aftertreatment 1 DEF Tank Heater 	J2:82
+J18:03	WHT/BLK	Aftertreatment 1 DEF Dosing Valve	J2:53
+J18:04	PNK/BLK	DEF Return Valve	J2:81
+J18:05	Pink	Water In Fuel Sensor	J2:13
+J18:06	Blue	Exhaust Gas Pressure	J2:36
+J18:07	Tan	Application Description	ECU Pins
+J18:08	ORN/BLK	Application Description	ECU Pins
+J18:09	YEL/BLK	Application Description	ECU Pins
+J18:10	Orange	Application Description	ECU Pins
+J18:11	PURPLE		
+J18:12	TAN/BLK	Application Description	ECU Pins
+J18:13	BROWN	Application Description	ECU Pins
+J18:14	GRN/WHT	Application Description	ECU Pins
+J18:15	GREEN	CAN2L	
+J18:16	YELLOW	CAN2H	
+J18:17	Red	Battery +	
+J18:18	BLACK	Ground	
+J24:01	PPL/WHT	Accelerator Pedal Signal 1	J2:31
+J24:02	BRN/WHT	Accelerator Pedal Signal 2	J2:55
+J24:03	YEL/BLK		
+J24:04	PNK/BLK	Engine Coolant Temp	J1:83
+J24:05	Blue	Vehicle Speed Sensor +	ECU Pins
+J24:06	GRN/BLK	Vehicle Speed Sensor -	ECU Pins
+J24:07	ORN/BLK	Dosing Unit Temperature	J2:6
+J24:08	YEL/RED	DEF Tank Temperature	J2:15
+J24:09	RED/WHT	Accelerator Pedal Analog 1	J2:10
+J24:10	RED/BLK	Engine Coolant Level Sensor 2	J2:35
+J24:11	BLU/WHT	Accelerator Pedal Analog 2	J2:64
+J24:12	TAN/BLK	Engine Coolant Level Sensor 1	J2:34
+J24:13	BROWN	Application Description	ECU Pins
+J24:14	BLK/WHT	Application Description	ECU Pins
+J24:15	GRN/WHT	DEF Dosing Unit Heater Relay	J2:7
+J24:16	RED/GRN	DEF Line Heater Relay	J2:3
+J24:17	PURPLE	CAN2L/J1708-	
+J24:18	PINK	CAN2H/J1708+	
+J24:19	TAN	Application Description	ECU Pins
+J24:20	ORANGE	Ignition	
+J24:21	GREEN	J1939L	
+J24:22	YELLOW	J1939H	
+J24:23	RED	+12V Out	
+J24:24	BLACK	Ground	

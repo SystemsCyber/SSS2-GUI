@@ -1,0 +1,43 @@
+Molex Pins	Color	Application	ECU Pins
+J18:01	PPL/WHT	Engine Brake Solenoid 1	J1:9
+J18:02	BRN/WHT	Engine Coolant Sensor 1	J2:35
+J18:03	WHT/BLK	Aftertreatment DPF Differential Pressure	J2:41
+J18:04	PNK/BLK	Aftertreatment DPF Outlet Pressure	J2:42
+J18:05	Pink	Water In Fuel Sensor	J2:13
+J18:06	Blue	Exhaust Gas Pressure	J1:36
+J18:07	Tan	EGR Differential Pressure	J1:66
+J18:08	ORN/BLK	Intake Manifold Pressure	J1:45
+J18:09	YEL/BLK	Barometric Pressure	J1:44
+J18:10	Orange	Coolant Level 2	J2:34
+J18:11	PURPLE	Adj Pwr Out	
+J18:12	TAN/BLK	Intake Manifold Temperature	J1:62
+J18:13	BROWN	DEF Heater	J2:82
+J18:14	GRN/WHT	Ambient Air Temperature	J2:65
+J18:15	GREEN	CAN2L	
+J18:16	YELLOW	CAN2H	
+J18:17	RED	Battery +	
+J18:18	BLACK	Ground	
+J24:01	PPL/WHT	Accelerator Pedal Signal 1	J2:31
+J24:02	BRN/WHT	Accelerator Pedal Signal 2	J2:55
+J24:03	YEL/BLK	DEF Tank Level	J2:14
+J24:04	PNK/BLK	Engine Coolant Temp	J1:83
+J24:05	Blue	Starter Lockout	J2:83
+J24:06	GRN/BLK	Throttle Actuator Position	J1:68
+J24:07	ORN/BLK	EGR Temperature	J1:65
+J24:08	YEL/RED	DEF Tank Temperature	J2:15
+J24:09	RED/WHT	Accelerator Pedal Analog 1	J2:10
+J24:10	RED/BLK	Engine Oil Temperature	J1:90
+J24:11	BLU/WHT	Accelerator Pedal Analog 2	J2:64
+J24:12	TAN/BLK	Fuel Level	J1:41
+J24:13	BROWN	Application Description	ECU Pins
+J24:14	BLK/WHT	Application Description	ECU Pins
+J24:15	GRN/WHT	DEF Dosing Unit Heater Relay	J2:7
+J24:16	RED/GRN	DEF Line Heater Relay	J2:3
+J24:17	PURPLE	CAN2L/J1708-	
+J24:18	PINK	CAN2H/J1708+	
+J24:19	TAN	Engine Crankcase Pressure Sensor and Rifle Pressure	J1:63 & 85
+J24:20	ORANGE	Ignition	
+J24:21	GREEN	J1939L	
+J24:22	YELLOW	J1939H	
+J24:23	RED	+12V Out	
+J24:24	BLACK	Ground	
