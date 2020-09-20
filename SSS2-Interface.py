@@ -58,7 +58,7 @@ import json
 import traceback
 import struct
 import traceback
-
+import sys
 import logging
 import logging.config
 logger = logging.getLogger(__name__)
@@ -66,6 +66,9 @@ logger.setLevel("DEBUG")
 logging.basicConfig()
 logger.debug("Starting SSS2 Interface")
 
+import usb.backend.libusb1
+backend = usb.backend.libusb1.get_backend(find_library=lambda x: "libusb0_x86.dll")
+print(backend)
 from SSS2_defaults import *
 
 release_title = "SSS2 Interface"
@@ -84,7 +87,7 @@ CAN_FRAME_LENGTH    = 20
 MAX_COMMAND_STRING_LENGTH = 50
 
 USB_HID_OUTPUT_ENDPOINT_ADDRESS = 0x04
-USB_HID_INPUT_ENDPOINT_ADDRESS = 0x81
+USB_HID_INPUT_ENDPOINT_ADDRESS = 0x83
 USB_HID_LENGTH = 64
 USB_HID_TIMEOUT = 0 # 0 = Blocking
 USB_MESSAGE_TIMEOUT = 5 #Seconds
@@ -392,6 +395,7 @@ class USBThread(threading.Thread):
                 else:
                   logger.debug('CRC Check Failed.')
             except usb.core.USBError:
+                print("broke here: " ,sys.exc_info())
                 break
             except AttributeError:
                 break
@@ -419,25 +423,49 @@ class SSS2Interface(QMainWindow):
         if not os.path.isdir(self.export_path):
             os.makedirs(self.export_path)
         self.filename = "default.SSS2"
-        with open(os.path.join(self.export_path,self.filename),'w') as f:
-            json.dump(self.settings_dict,f,indent=4,sort_keys=True)
-        self.setWindowTitle('{} {} - {}'.format(release_title,
-                                                release_version,
-                                                self.filename))        
+        # with open(os.path.join(self.export_path,self.filename),'w') as f:
+        #     json.dump(self.settings_dict,f,indent=4,sort_keys=True)
+        # self.setWindowTitle('{} {} - {}'.format(release_title,
+        #                                         release_version,
+        #                                         self.
+        # ))        
         self.init_gui()
         self.show()
         logger.debug("Done Initializing GUI")
         self.setup_usb()
-        read_timer = QTimer(self)
-        read_timer.timeout.connect(self.read_usb_hid)
-        read_timer.start(109) #milliseconds
+        # read_timer = QTimer(self)
+        # read_timer.timeout.connect(self.read_usb_hid)
+        # read_timer.start(109) #milliseconds
+        self.read_usb_hid()
+
+
+# data = b'\x10,1,32,2,33,3,34,4,42,17,42,50,1' 
+# padded_data = data + bytes([0 for i in range(62 - len(data))])
+# crc = crc16_ccitt(0xFFFF, bytes(padded_data))
+# print(crc)
+# data_to_send = bytes(padded_data) + crc
+# print(data_to_send)
+# print(len(data_to_send))
+# sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
+
 
     def send_command(self, command_string):
         if self.usb_signal:
+            # data = b'\x10,1,32,2,33,3,34,4,42,17,42,50,1' 
+            # padded_data = data + bytes([0 for i in range(62 - len(data))])
+            # crc = crc16_ccitt(0xFFFF, bytes(padded_data))
+            # print(crc)
+            # data_to_send = bytes(padded_data) + crc
+            # print(data_to_send)
+            # print(len(data_to_send))
+            # self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
+ 
+
             data = b'\x10' + command_string.encode('ascii')
+            # data = b'\x10,1,32,2,33,3,34,4,42,17,42,50,1'
             padded_data = data + bytes([0 for i in range(62 - len(data))])
-            crc = crc16_ccitt(0xFFFF, bytes(padded_data[0:62]))
-            data_to_send = bytes(padded_data[0:62]) + crc
+            crc = crc16_ccitt(0xFFFF, bytes(padded_data))
+            data_to_send = bytes(padded_data) + crc
             self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
             logger.debug(command_string)
             time.sleep(0.01)
@@ -447,13 +475,16 @@ class SSS2Interface(QMainWindow):
     def setup_usb(self):
         # find our device
         self.sss = None
-        for device in usb.core.find(find_all=True, idVendor=0x16c0, idProduct=0x0486):
-            self.sss = device
+        # for device in usb.core.find(find_all=True, idVendor=0x16c0, idProduct=0x0486):
+        try:
+            self.sss =  usb.core.find( idVendor=0x16c0, idProduct=0x0486)
+        except usb.core.USBError:
+            print("No USB Found - Ram")
 
         # was it found?
         if self.sss is None:
-            #QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
-            #logger.debug("No SSS2 Present.")
+            QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
+            logger.debug("No SSS2 Present.")
             return False
 
         logger.debug(self.sss)
@@ -476,6 +507,7 @@ class SSS2Interface(QMainWindow):
         self.read_usb_hid_thread = USBThread(self, self.rx_queue)
         self.read_usb_hid_thread.setDaemon(True) #needed to close the thread when the application closes.
         self.read_usb_hid_thread.start()
+        self.usb_signal=True
 
         sm = self.settings_model["Potentiometers"]
         # Iterate though all the bytes in the incomming message
@@ -1777,7 +1809,7 @@ class SSS2Interface(QMainWindow):
         self.settings_tree.model().dataChanged.connect(self.change_setting)
         self.settings_tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.settings_model={}
-        self.fill_tree();
+        self.fill_tree()
 
         #setup the layout to be displayed in the box
         tree_tab_layout.addWidget(self.settings_tree)
@@ -1796,7 +1828,7 @@ class SSS2Interface(QMainWindow):
         self.tabs.addTab(self.can_tab,"Message Generator")
         self.can_tab_layout = QGridLayout()
 
-        self.build_can_generator_tab()
+        # self.build_can_generator_tab()
         #setup the layout to be displayed in the box
         self.can_tab.setLayout(self.can_tab_layout)
         

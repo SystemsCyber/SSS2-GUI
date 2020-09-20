@@ -50,6 +50,7 @@ sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
 for i in range(20):
 	# read method returns an array of bytes 
 	# see (https://docs.python.org/3/library/array.html)
+	time.sleep(0.1)
 	try:
 		data_stream = bytes(sss.read(USB_HID_INPUT_ENDPOINT_ADDRESS, 
 								 USB_HID_LENGTH, 
