@@ -13,5 +13,5 @@ You can also plug your USB device after Zadig is running, as the list is refresh
 
 4. Select **Teensyduino RawHID (Interface 0)** from the list drop down.
 5. Select **libusb-win32** from the driver dopdown menu and Hit **Replace Driver** Button
-      [Zadig Image]('Zadig_1.PNG')
+      ![Zadig Image]('Zadig_1.PNG')
 
