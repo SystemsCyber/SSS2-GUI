@@ -1,6 +1,9 @@
 # A Graphical User Interface for the Smart Sensor Simulator 2
 A Python tkinter GUI for the SSS2 that sends and recieves serial commands to the SSS2 over USB.
 
+## For Developers:
+if using the latest version we need to have a way to access kernel drivers to read RAW HID. In order to do that we need to install libusb drivers. Please refer to the [Procedure](Installing_libusb_drivers.md)
+
 ## Working With Building Cables
 The SSS2 Interface App must be run in Python 3.4. The file SSS2-Interface.py should be opened with Python 3.4 to run. If you are developing files for the different cables, please be sure to set the Universal Flag to True (```UNIVERSAL = True```).
 Be sure to commit and Sync all new files to Githup after each development.
