@@ -5,7 +5,7 @@ The SSS2 Interface App must be run in Python 3.4. The file SSS2-Interface.py sho
 Be sure to commit and Sync all new files to Githup after each development. -->
 
 ## Installing libusb drivers using Zadig:
-1. Install Zadig from ```https://zadig.akeo.ie/```
+1. Install [Zadig](https://zadig.akeo.ie/) from ```https://zadig.akeo.ie/```
    
 2. The application needs to run with administrative privileges. To be able to install a driver, you should run the application as a **Administrator**.
 3. With the application running, you should see your USB device appear in the dropdown list (click on the dropdown to see all devices).
