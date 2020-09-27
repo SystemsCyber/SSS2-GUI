@@ -449,7 +449,7 @@ class SSS2Interface(QMainWindow):
         self.sss = None
         for device in usb.core.find(find_all=True, idVendor=0x16c0, idProduct=0x0486):
             self.sss = device
-            break #take the Interface_0
+            # break #take the Interface_0
 
         # was it found?
         if self.sss is None:
