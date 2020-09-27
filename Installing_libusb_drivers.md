@@ -12,6 +12,6 @@ Be sure to commit and Sync all new files to Githup after each development. -->
 You can also plug your USB device after Zadig is running, as the list is refreshed automatically. If the list doesnt Auto populate you can go to Options -> List all Devices.
 
 4. Select **Teensyduino RawHID (Interface 0)** from the list drop down.
-5. Select **libusb-win32** from the driver dopdown menu and Hit **Replace Driver** Button
+5. Select **libusbK** from the driver dopdown menu and Hit **Replace Driver** Button
       ![Zadig Image](Zadig_1.PNG)
 
