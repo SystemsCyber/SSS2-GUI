@@ -4,6 +4,7 @@ This program requires the usb driver libusb0_x86.dll
 to be installed in a system path, like c:\Windows\System32
 """
 #
+# ram
 from PyQt5.QtWidgets import (QMainWindow,
                              QWidget,
                              QTreeView,
@@ -411,8 +412,10 @@ class USBThread(threading.Thread):
                 logger.debug(traceback.format_exc())
                 break
         logger.debug("USBThread Ending.")
+        
         try:
-            usb.util.release_interface(self.root.sss,self.root.sss_interface)
+            dispose_resources(self.root.sss)
+            # usb.util.release_interface(self.root.sss,self.root.sss_interface)
         except:
             logger.debug("Unable to Release USB.")
         self.root.usb_signal = False
@@ -560,6 +563,7 @@ class SSS2Interface(QMainWindow):
                     self.parse_can_message(rxmessage)    
                 elif rxmessage_type == CAN_THREADS_TYPE:
                     # Received a network message
+                    # logger.debug(rxmessage)
                     self.fill_can_table(rxmessage)    
                 elif rxmessage_type == ESCAPE_TYPE:
                     #Future stuff
@@ -1353,7 +1357,7 @@ class SSS2Interface(QMainWindow):
         self.can_table = QTableView()
         self.can_data_model = CANTableModel()
         self.can_table_proxy = Proxy()
-        self.can_data_model.setDataDict(self.can_generator_dict)
+        # self.can_data_model.setDataDict(self.can_generator_dict)
         self.can_table_columns = ["Thread","Count","Index","Send","Channel","Period",
                                     "Restart","Total","TX Count","CAN HEX ID","DLC",
                                     "B1","B2","B3","B4","B5","B6","B7","B8","Label"]
@@ -1417,7 +1421,7 @@ class SSS2Interface(QMainWindow):
         """
         needs_updating = False
         entry = struct.unpack(">L",rxmessage[2:6])[0]
-        print(entry) 
+        print("entry: ",entry) 
         if entry not in self.can_generator_dict:
             self.can_generator_dict[entry] = {'previous':[None for i in rxmessage]}
                
@@ -1444,28 +1448,28 @@ class SSS2Interface(QMainWindow):
             self.can_generator_dict[entry]["Channel"] = rxmessage[1]
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Channel"])
             needs_updating = True
-        
+        # Thread
         if self.can_generator_dict[entry]['previous'][2:4] != rxmessage[2:4]:
             col = self.can_table_columns.index("Thread")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Thread"] = "{:4d}".format(struct.unpack("<H",rxmessage[2:4])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Thread"])
             needs_updating = True
-        
+        # Index
         if self.can_generator_dict[entry]['previous'][4:6] != rxmessage[4:6]:
             col = self.can_table_columns.index("Index")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Index"] = "{:4d}".format(struct.unpack("<H",rxmessage[4:6])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Index"])
             needs_updating = True
-        
+        # DLC
         if self.can_generator_dict[entry]['previous'][6] != rxmessage[6]:
             col = self.can_table_columns.index("DLC")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["DLC"] = rxmessage[6]
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["DLC"])
             needs_updating = True
-        
+        # Send
         if self.can_generator_dict[entry]['previous'][32] != rxmessage[32]:
             send = rxmessage[32]
             col = self.can_table_columns.index("Send")
@@ -1841,13 +1845,16 @@ class CANTableModel(QAbstractTableModel):
         self.header = header
         self.first = self.header[0]
         self.header_len = len(self.header)
+        print("Entered setDataHeader")
         
     def setDataDict(self, new_dict):
+        # print("entered setDataDict", new_dict)
         self.data_dict = new_dict
         self.table_rows = list(sorted(new_dict.keys()))
         
     def aboutToUpdate(self):
         self.layoutAboutToBeChanged.emit()
+        print("Entered aboutToUpdate")
 
     def signalUpdate(self):
         ''' tell viewers to update their data (this is full update, not
@@ -1863,6 +1870,7 @@ class CANTableModel(QAbstractTableModel):
             return QVariant()
 
     def data(self, index, role=Qt.DisplayRole):
+        # print("entered data")
         if index.isValid() and role == Qt.DisplayRole:
             key = self.table_rows[index.row()]
             col_name = self.header[index.column()]
@@ -1873,13 +1881,27 @@ class CANTableModel(QAbstractTableModel):
     def flags(self, index):
             flags = super(CANTableModel, self).flags(index)
             flags |= ~Qt.ItemIsEditable
-            return flags
+            # print("Flag: ",flags)
+            return Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable #flags
 
     def setData(self, index, value, role = Qt.DisplayRole):
+        
         if role == Qt.DisplayRole and index.isValid():
             self.dataChanged.emit(index, index)
             return True
+        elif role == Qt.EditRole and index.isValid():
+            print("entered setData at Row: ",index.row(),index.column(),value)
+            print("Role: ",role)
+            key = self.table_rows[index.row()]
+            col_name = self.header[index.column()]
+
+            self.data_dict[key][col_name] = value
+            self.dataChanged.emit(index, index)
+            print("Modified Column",index.column())
+           
+            return True
         else:
+            print("False")
             return False
 
     def rowCount(self, index=QVariant()):
