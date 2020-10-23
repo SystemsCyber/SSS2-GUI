@@ -450,15 +450,31 @@ class SSS2Interface(QMainWindow):
         read_timer.timeout.connect(self.read_usb_hid)
         read_timer.start(109) #milliseconds
 
-    def send_command(self, command_string):
+    def send_command(self, command_string,TYPE):
         if self.usb_signal:
-            data = b'\x10' + command_string.encode('ascii')
-            padded_data = data + bytes([0 for i in range(62 - len(data))])
-            crc = crc16_ccitt(0xFFFF, bytes(padded_data[0:62]))
-            data_to_send = bytes(padded_data[0:62]) + crc
-            self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
-            logger.debug(command_string)
-            time.sleep(0.01)
+            if TYPE == COMMAND_TYPE:
+                data = b'\x10' + command_string.encode('ascii')
+                padded_data = data + bytes([0 for i in range(62 - len(data))])
+                crc = crc16_ccitt(0xFFFF, bytes(padded_data[0:62]))
+                data_to_send = bytes(padded_data[0:62]) + crc
+                self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
+                logger.debug(command_string)
+                time.sleep(0.01)
+            elif TYPE == CAN_THREAD_TYPE:
+                data = b'\x40' + command_string.encode('ascii')
+                padded_data = data + bytes([0 for i in range(62 - len(data))])
+                crc = crc16_ccitt(0xFFFF, bytes(padded_data[0:62]))
+                data_to_send = bytes(padded_data[0:62]) + crc
+                self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS,
+                               data_to_send, USB_HID_TIMEOUT)
+                logger.debug(command_string)
+                time.sleep(0.01)
+            elif TYPE == STATUS_TYPE:
+                pass
+            elif TYPE == MESSAGE_TYPE:
+                pass
+            elif TYPE == ESCAPE_TYPE:
+                pass
         else:
             logger.debug("Failed to Send. No USB.")
 
@@ -563,7 +579,7 @@ class SSS2Interface(QMainWindow):
                     self.parse_can_message(rxmessage)    
                 elif rxmessage_type == CAN_THREADS_TYPE:
                     # Received a network message
-                    # logger.debug(rxmessage)
+                    logger.debug(rxmessage)
                     self.fill_can_table(rxmessage)    
                 elif rxmessage_type == ESCAPE_TYPE:
                     #Future stuff
@@ -967,7 +983,7 @@ class SSS2Interface(QMainWindow):
                 elif setting_number == 73 or setting_number == 74:
                     setting_value = not setting_value
                 command_string = "{:d},{:d}".format(setting_number,setting_value)
-                self.send_command(command_string) 
+                self.send_command(command_string, COMMAND_TYPE)
         except AttributeError:
             #Do nothing if there is no itemFromIndex
             pass
@@ -1000,7 +1016,7 @@ class SSS2Interface(QMainWindow):
                     setting_value = int(model.itemFromIndex(index).text())
                 #logger.debug("Setting Value: {}".format(setting_value))
                 command_string = "{:d},{:d}".format(setting_number,setting_value)
-                self.send_command(command_string)            
+                self.send_command(command_string, COMMAND_TYPE)
             except (AttributeError,TypeError):
                 #Some of the items do not have siblings.
                 logger.debug(traceback.format_exc())
@@ -1013,7 +1029,33 @@ class SSS2Interface(QMainWindow):
             # call this function and it goes into a loop.
             self.edit_settings = False
          
-    
+
+    def change_CAN_gen_setting(self, item):
+        if self.edit_CAN_settings or self.load_settings:
+            # See if an item was passed in, or is it an index.
+            try:
+                # index = item.index()
+                row_idx = self.can_data_model.last_modified_row
+                column_idx = self.can_data_model.last_modified_column
+            except:
+                index = item
+            # The parent is the row index
+            logger.log(1,row_idx,column_idx)
+           
+            key = self.can_data_model.table_rows[row_idx]
+            col_name = self.can_data_model.header[column_idx]
+
+            column = self.can_generator_dict[key]
+            
+            self.send_command(command_string, COMMAND_TYPE)
+
+            # self.data_dict[key][col_name] = value
+
+            # The edit_settings flag is to ensure the user is the one editing the settings
+            # Setting this flag is done with a mouse click. With out this check, the SSS2 can
+            # call this function and it goes into a loop.
+            self.edit_settings = False
+
     def fill_tree(self):
         
         for key0,item0 in self.settings_dict.items():
@@ -1207,7 +1249,8 @@ class SSS2Interface(QMainWindow):
     
     def enable_edit(self):
         self.edit_settings = True
-    
+    def enable_CAN_gen_edit(self):
+        self.edit_CAN_settings=True
     def load_file(self):
         
         filters = "Smart Sensor Simulator Settings Files (*.SSS2);;All Files (*.*)"
@@ -1262,9 +1305,9 @@ class SSS2Interface(QMainWindow):
             setting_value  = int(float(s[dac]["Average Voltage"])*1000)
             command_string += "{:d},{:d},".format(setting_number, setting_value)
             if len(command_string) > MAX_COMMAND_STRING_LENGTH:
-                self.send_command(command_string)
+                self.self.send_command(command_string,COMMAND_TYPE)
                 command_string = ""    
-        self.send_command(command_string)  # Send combined commands  command_string = "" 
+        self.self.send_command(command_string,COMMAND_TYPE)  # Send combined commands  command_string = "" 
         
         command_string = "" 
         
@@ -1281,14 +1324,14 @@ class SSS2Interface(QMainWindow):
                                                            setting_value,
                                                            tcon_setting_number,
                                                            tcon_setting_value)
-            self.send_command(command_string)
+            self.self.send_command(command_string, COMMAND_TYPE)
             
         command_string = ""    
         for group in set(GROUP_NAMES): # Use a set since GROUP_NAMES contains duplicates
             setting_number = s[group]["SSS2 Setting"]
             setting_value = int(s[group]["Terminal A Connection"])
             command_string += "{:d},{:d},".format(setting_number, setting_value)
-        self.send_command(command_string)  # Send combined commands   
+        self.self.send_command(command_string,COMMAND_TYPE)  # Send combined commands   
         
         
         
@@ -1296,7 +1339,7 @@ class SSS2Interface(QMainWindow):
         setting_number = self.settings_dict["HVAdjOut"]["SSS2 setting"]
         setting_value  = self.setHVOUT_voltage(self.settings_dict["HVAdjOut"]["Average Voltage"])
         command_string += "{:d},{},".format(setting_number, setting_value)
-        self.send_command(command_string) 
+        self.self.send_command(command_string,COMMAND_TYPE) 
 
         command_string = "" 
         s = self.settings_dict["Switches"]
@@ -1305,9 +1348,9 @@ class SSS2Interface(QMainWindow):
             setting_value  = int((s[name]["State"]))
             command_string += "{:d},{:d},".format(setting_number, setting_value)
             if len(command_string) > MAX_COMMAND_STRING_LENGTH:
-                self.send_command(command_string)
+                self.self.send_command(command_string,COMMAND_TYPE)
                 command_string = ""    
-        self.send_command(command_string)  # Send combined commands  
+        self.self.send_command(command_string,COMMAND_TYPE)  # Send combined commands  
         
         command_string = "" 
         s = self.settings_dict["PWMs"]
@@ -1318,7 +1361,7 @@ class SSS2Interface(QMainWindow):
             setting_number = s[name]["SSS2 freq setting"] #Watch capitalization. 
             setting_value  = int((s[name]["Frequency"]))
             command_string += "{:d},{:d},".format(setting_number, setting_value)
-            self.send_command(command_string)
+            self.self.send_command(command_string,COMMAND_TYPE)
             command_string = ""    
         #self.send_command("LS")
         return True
@@ -1365,12 +1408,21 @@ class SSS2Interface(QMainWindow):
         self.can_table_proxy.setSourceModel(self.can_data_model)
         self.can_table.setModel(self.can_table_proxy)
         self.can_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.can_table.doubleClicked.connect(self.enable_CAN_gen_edit)
+        self.can_table.model().dataChanged.connect(self.change_CAN_gen_setting)
+
         self.can_table.setSortingEnabled(True)
         self.can_table.setWordWrap(False)
         self.can_table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
         self.can_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.can_table.setAlternatingRowColors(True)
         self.can_tab_layout.addWidget(self.can_table,0,0,1,3)
+
+
+        #self.settings_tree.setSelectionBehavior(QAbstractItemView.SelectItems)
+        # self.settings_tree.doubleClicked.connect(self.enable_edit)
+        # self.settings_tree.clicked.connect(self.clicked_setting)
+        
         
         # self.add_row_button = QPushButton("Add Row to Table", self)
         # self.add_row_button.clicked.connect(self.add_can_table_row)
@@ -1422,6 +1474,7 @@ class SSS2Interface(QMainWindow):
         needs_updating = False
         entry = struct.unpack(">L",rxmessage[2:6])[0]
         print("entry: ",entry) 
+        # self.send_command("test",CAN_THREAD_TYPE)
         if entry not in self.can_generator_dict:
             self.can_generator_dict[entry] = {'previous':[None for i in rxmessage]}
                
@@ -1441,7 +1494,7 @@ class SSS2Interface(QMainWindow):
             self.can_generator_dict[entry]["TX Count"] = "{:10d}".format(struct.unpack("<L",rxmessage[33:37])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["TX Count"])
             needs_updating = True
-        
+        # Thread
         if self.can_generator_dict[entry]['previous'][1] != rxmessage[1]:
             col = self.can_table_columns.index("Channel")
             idx = self.can_data_model.index(row, col)
@@ -1469,8 +1522,9 @@ class SSS2Interface(QMainWindow):
             self.can_generator_dict[entry]["DLC"] = rxmessage[6]
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["DLC"])
             needs_updating = True
-        # Send
+        # Send/Enabled
         if self.can_generator_dict[entry]['previous'][32] != rxmessage[32]:
+            logger.log(1,"Entered Enable Section")
             send = rxmessage[32]
             col = self.can_table_columns.index("Send")
             idx = self.can_data_model.index(row, col)
@@ -1543,10 +1597,7 @@ class SSS2Interface(QMainWindow):
             self.can_table.resizeRowsToContents()     
             self.can_table.scrollToBottom()
             self.can_table.resizeColumnsToContents()
-            
-
-
-
+         
     def write_file(self):
         self.send_command("SAVE")
 
@@ -1653,16 +1704,13 @@ class SSS2Interface(QMainWindow):
         self.lin_tx_count = QLineEdit()
         self.network_tab_layout.addWidget(self.lin_tx_count,2,5,1,1)
         
-
-       
-
     def change_can0_baud(self):
         selection = self.can0_baud_box.currentText()
         if "Auto" in selection:
             commandString = "B0,"
         else:
             commandString = "B0,{}".format(selection)
-        self.send_command(commandString) 
+        self.send_command(commandString,COMMAND_TYPE) 
 
     def change_can1_baud(self):
         selection = self.can1_baud_box.currentText()
@@ -1706,21 +1754,21 @@ class SSS2Interface(QMainWindow):
             commandString = "C0,1"
         else:
             commandString = "C0,0"
-        self.send_command(commandString)
+        self.send_command(commandString, COMMAND_TYPE)
 
     def send_stream_can1(self):
         if self.can1_stream_box.isChecked():
             commandString = "C1,1"
         else:
             commandString = "C1,0"
-        self.send_command(commandString)
+        self.send_command(commandString,COMMAND_TYPE)
 
     def send_stream_can2(self):
         if self.can2_stream_box.isChecked():
             commandString = "C2,1"
         else:
             commandString = "C2,0"
-        self.send_command(commandString)
+        self.send_command(commandString, COMMAND_TYPE)
 
     def send_ignition_key_command(self):
         commandString = "50,0"    
@@ -1731,7 +1779,7 @@ class SSS2Interface(QMainWindow):
                 commandString = "50,1"
             else:
                 self.ignition_key_button.setChecked()
-        self.send_command(commandString)
+        self.send_command(commandString, COMMAND_TYPE)
 
 
     def init_gui(self):
@@ -1816,7 +1864,7 @@ class SSS2Interface(QMainWindow):
         self.can_tab = QWidget()
         self.tabs.addTab(self.can_tab,"Message Generator")
         self.can_tab_layout = QGridLayout()
-
+        
         self.build_can_generator_tab()
         #setup the layout to be displayed in the box
         self.can_tab.setLayout(self.can_tab_layout)
@@ -1832,7 +1880,7 @@ class SSS2Interface(QMainWindow):
         self.resize(950, 700)
         
         return
-        
+    
 class CANTableModel(QAbstractTableModel):
     ''' data model for a J1939 Data class '''
     def __init__(self):
@@ -1840,6 +1888,7 @@ class CANTableModel(QAbstractTableModel):
         self.data_dict = {}
         self.header = []
         self.table_rows = []
+        self.table_edited = False
 
     def setDataHeader(self, header):
         self.header = header
@@ -1854,7 +1903,7 @@ class CANTableModel(QAbstractTableModel):
         
     def aboutToUpdate(self):
         self.layoutAboutToBeChanged.emit()
-        print("Entered aboutToUpdate")
+        # print("Entered aboutToUpdate")
 
     def signalUpdate(self):
         ''' tell viewers to update their data (this is full update, not
@@ -1896,8 +1945,15 @@ class CANTableModel(QAbstractTableModel):
             col_name = self.header[index.column()]
 
             self.data_dict[key][col_name] = value
+            self.last_modified_row = index.row()
+            self.last_modified_column = index.column()
+
             self.dataChanged.emit(index, index)
             print("Modified Column",index.column())
+            
+
+
+
            
             return True
         else:
