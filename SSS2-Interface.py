@@ -460,8 +460,8 @@ class SSS2Interface(QMainWindow):
                 self.sss.write(USB_HID_OUTPUT_ENDPOINT_ADDRESS, data_to_send, USB_HID_TIMEOUT)
                 logger.debug(command_string)
                 time.sleep(0.01)
-            elif TYPE == CAN_THREAD_TYPE:
-                data = b'\x40' + command_string.encode('ascii')
+            elif TYPE == CAN_THREADS_TYPE:
+                data = b'\x40' + command_string   #.encode('ascii')
                 padded_data = data + bytes([0 for i in range(62 - len(data))])
                 crc = crc16_ccitt(0xFFFF, bytes(padded_data[0:62]))
                 data_to_send = bytes(padded_data[0:62]) + crc
@@ -579,7 +579,7 @@ class SSS2Interface(QMainWindow):
                     self.parse_can_message(rxmessage)    
                 elif rxmessage_type == CAN_THREADS_TYPE:
                     # Received a network message
-                    logger.debug(rxmessage)
+                    # logger.debug(rxmessage)
                     self.fill_can_table(rxmessage)    
                 elif rxmessage_type == ESCAPE_TYPE:
                     #Future stuff
@@ -1037,17 +1037,54 @@ class SSS2Interface(QMainWindow):
                 # index = item.index()
                 row_idx = self.can_data_model.last_modified_row
                 column_idx = self.can_data_model.last_modified_column
+                value = self.can_data_model.last_modified_value
             except:
                 index = item
             # The parent is the row index
             logger.log(1,row_idx,column_idx)
-           
+            
             key = self.can_data_model.table_rows[row_idx]
             col_name = self.can_data_model.header[column_idx]
+            self.can_generator_dict[key][col_name] = value
 
             column = self.can_generator_dict[key]
             
-            self.send_command(command_string, COMMAND_TYPE)
+
+            Thread_id = bytes([column['Thread']])
+            Stop_aftr = bytes([column['Count']])
+            if column['Send'] == "Yes":
+                  Enabled =b'\x01'
+            else:
+                Enabled =b'\x00'
+                
+            channel = bytes([column['Channel']])
+            TX_Period = bytes([column['Period']])  #*4 bytes
+            TX_Delay  = bytes([column['Restart']])
+            Num_Msgs  = bytes([column['Total']])
+
+            # index     = bytes([column['Index']])
+            
+            
+            ID        = bytes.fromhex(column['CAN HEX ID'])
+            DLC       = bytes([column['DLC']])
+
+            B0        = bytes.fromhex(column['B0'])  #bytes(column['B0'],'ascii')
+            B1        = bytes.fromhex(column['B1']) 
+            B2        = bytes.fromhex(column['B2']) 
+            B3        = bytes.fromhex(column['B3']) 
+            B4        = bytes.fromhex(column['B4']) 
+            B5        = bytes.fromhex(column['B5']) 
+            B6        = bytes.fromhex(column['B6']) 
+            B7        = bytes.fromhex(column['B7']) 
+      
+            # Tx_Num    = bytes([column['TX Count']])
+            Thread_Name    = column['Label'].encode('ascii')
+            Counter   = bytes([column['TX Count']])
+            # command_string='EBC1 from Brake Controller;    7;1;0;0; 100;   0;0;1;18F0010B;8; 0; 0; 0; 0; 0; 0; 0; 0'  
+            command_string = Thread_id + Stop_aftr + Enabled + TX_Period + TX_Delay + Num_Msgs \
+                + ID + DLC+ B0 + B1 + B2 + B3 + B4 + B5 + B6 + B7 + Thread_Name
+            logger.debug(command_string)
+            self.send_command(command_string, CAN_THREADS_TYPE)
 
             # self.data_dict[key][col_name] = value
 
@@ -1403,7 +1440,7 @@ class SSS2Interface(QMainWindow):
         # self.can_data_model.setDataDict(self.can_generator_dict)
         self.can_table_columns = ["Thread","Count","Index","Send","Channel","Period",
                                     "Restart","Total","TX Count","CAN HEX ID","DLC",
-                                    "B1","B2","B3","B4","B5","B6","B7","B8","Label"]
+                                    "B0","B1","B2","B3","B4","B5","B6","B7","Label"]
         self.can_data_model.setDataHeader(self.can_table_columns)
         self.can_table_proxy.setSourceModel(self.can_data_model)
         self.can_table.setModel(self.can_table_proxy)
@@ -1472,8 +1509,8 @@ class SSS2Interface(QMainWindow):
           }
         """
         needs_updating = False
-        entry = struct.unpack(">L",rxmessage[2:6])[0]
-        print("entry: ",entry) 
+        entry = "{}".format(struct.unpack("<H", rxmessage[2:4])[0]) # Extracting Thread Number
+        print("Thread Number: ",entry) 
         # self.send_command("test",CAN_THREAD_TYPE)
         if entry not in self.can_generator_dict:
             self.can_generator_dict[entry] = {'previous':[None for i in rxmessage]}
@@ -1487,14 +1524,14 @@ class SSS2Interface(QMainWindow):
         #         needs_updating = True
                 
         row = list(self.can_generator_dict.keys()).index(entry)
-        
+        # TX Count
         if self.can_generator_dict[entry]['previous'][33:37] != rxmessage[33:37]:
             col = self.can_table_columns.index("TX Count")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["TX Count"] = "{:10d}".format(struct.unpack("<L",rxmessage[33:37])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["TX Count"])
             needs_updating = True
-        # Thread
+        # Channel
         if self.can_generator_dict[entry]['previous'][1] != rxmessage[1]:
             col = self.can_table_columns.index("Channel")
             idx = self.can_data_model.index(row, col)
@@ -1534,35 +1571,35 @@ class SSS2Interface(QMainWindow):
                 self.can_generator_dict[entry]["Send"] = "Yes"
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Send"])
             needs_updating = True
-        
+        # Period
         if self.can_generator_dict[entry]['previous'][7:11] != rxmessage[7:11]:
             col = self.can_table_columns.index("Period")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Period"] = "{:6d}".format(struct.unpack("<L",rxmessage[7:11])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Period"])
             needs_updating = True
-        
+        # Restart
         if self.can_generator_dict[entry]['previous'][11:15] != rxmessage[11:15]:
             col = self.can_table_columns.index("Restart")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Restart"] = "{:6d}".format(struct.unpack("<L",rxmessage[11:15])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Restart"])
             needs_updating = True
-        
+        # Count
         if self.can_generator_dict[entry]['previous'][15] != rxmessage[15]:
             col = self.can_table_columns.index("Count")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Count"] =  rxmessage[15]
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Count"])
             needs_updating = True
-        
+        # Total
         if self.can_generator_dict[entry]['previous'][16:20] != rxmessage[16:20]:
             col = self.can_table_columns.index("Total")
             idx = self.can_data_model.index(row, col)
             self.can_generator_dict[entry]["Total"] = struct.unpack("<L",rxmessage[16:20])[0]
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Total"])
             needs_updating = True
-        
+        # Hex ID
         if self.can_generator_dict[entry]['previous'][20:24] != rxmessage[20:24]:
             can_id = struct.unpack("<L",rxmessage[20:24])[0]
             col = self.can_table_columns.index("CAN HEX ID")
@@ -1570,16 +1607,16 @@ class SSS2Interface(QMainWindow):
             self.can_generator_dict[entry]["CAN HEX ID"] = "{:08X}".format(can_id)
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["CAN HEX ID"])
             needs_updating = True
-        
+        # CAN Data
         if self.can_generator_dict[entry]['previous'][24:32] != rxmessage[24:32]:
             data_bytes = struct.unpack("BBBBBBBB",rxmessage[24:32])
-            col = self.can_table_columns.index("B1")
+            col = self.can_table_columns.index("B0")
             for b,c,d in zip(data_bytes,range(col,col+8),range(8)):
                 idx = self.can_data_model.index(row, c)
                 self.can_generator_dict[entry]["B{}".format(d+1)] = "{:02X}".format(b)
                 self.can_data_model.setData(idx, self.can_generator_dict[entry]["B{}".format(d+1)])
             needs_updating = True
-
+        # Label
         if self.can_generator_dict[entry]['previous'][37:61] != rxmessage[37:61]:
             name = rxmessage[37:61].decode('ascii','ignore')
             col = self.can_table_columns.index("Label")
@@ -1936,18 +1973,17 @@ class CANTableModel(QAbstractTableModel):
     def setData(self, index, value, role = Qt.DisplayRole):
         
         if role == Qt.DisplayRole and index.isValid():
-            self.dataChanged.emit(index, index)
+            # self.dataChanged.emit(index, index)
             return True
         elif role == Qt.EditRole and index.isValid():
             print("entered setData at Row: ",index.row(),index.column(),value)
             print("Role: ",role)
             key = self.table_rows[index.row()]
             col_name = self.header[index.column()]
-
-            self.data_dict[key][col_name] = value
+            # self.data_dict[key][col_name] = value
             self.last_modified_row = index.row()
             self.last_modified_column = index.column()
-
+            self.last_modified_value = value
             self.dataChanged.emit(index, index)
             print("Modified Column",index.column())
             
