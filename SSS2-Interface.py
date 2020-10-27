@@ -1050,17 +1050,17 @@ class SSS2Interface(QMainWindow):
             column = self.can_generator_dict[key]
             
 
-            Thread_id = bytes([column['Thread']])
-            Stop_aftr = bytes([column['Count']])
+            Thread_id = bytes([int(column['Thread'])])
+            Stop_aftr = (int(column['Count'])).to_bytes(2, byteorder='big')
             if column['Send'] == "Yes":
                   Enabled =b'\x01'
             else:
                 Enabled =b'\x00'
                 
-            channel = bytes([column['Channel']])
-            TX_Period = bytes([column['Period']])  #*4 bytes
-            TX_Delay  = bytes([column['Restart']])
-            Num_Msgs  = bytes([column['Total']])
+            channel = bytes([int(column['Channel'])])
+            TX_Period = (int(column['Period'])).to_bytes(4, byteorder='big') #bytes([int(column['Period'])])  #*4 bytes
+            TX_Delay  = (int(column['Restart'])).to_bytes(2, byteorder='big')
+            Num_Msgs  = (int(column['Total'])).to_bytes(4, byteorder='big') #bytes([int(column['Total'])])
 
             # index     = bytes([column['Index']])
             
@@ -1079,9 +1079,10 @@ class SSS2Interface(QMainWindow):
       
             # Tx_Num    = bytes([column['TX Count']])
             Thread_Name    = column['Label'].encode('ascii')
-            Counter   = bytes([column['TX Count']])
-            # command_string='EBC1 from Brake Controller;    7;1;0;0; 100;   0;0;1;18F0010B;8; 0; 0; 0; 0; 0; 0; 0; 0'  
-            command_string = Thread_id + Stop_aftr + Enabled + TX_Period + TX_Delay + Num_Msgs \
+            # Counter = (int(column['TX Count'])).to_bytes(
+            #     4, byteorder='big')  # bytes([int(column['TX Count'])])
+            # command_string='EBC1 from Brake Contro5ller;    7;1;0;0; 100;   0;0;1;18F0010B;8; 0; 0; 0; 0; 0; 0; 0; 0'  
+            command_string = Thread_id + Stop_aftr + Enabled + channel + TX_Period + TX_Delay + Num_Msgs \
                 + ID + DLC+ B0 + B1 + B2 + B3 + B4 + B5 + B6 + B7 + Thread_Name
             logger.debug(command_string)
             self.send_command(command_string, CAN_THREADS_TYPE)
