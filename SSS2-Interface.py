@@ -1613,8 +1613,8 @@ class SSS2Interface(QMainWindow):
             col = self.can_table_columns.index("B0")
             for b,c,d in zip(data_bytes,range(col,col+8),range(8)):
                 idx = self.can_data_model.index(row, c)
-                self.can_generator_dict[entry]["B{}".format(d+1)] = "{:02X}".format(b)
-                self.can_data_model.setData(idx, self.can_generator_dict[entry]["B{}".format(d+1)])
+                self.can_generator_dict[entry]["B{}".format(d)] = "{:02X}".format(b)
+                self.can_data_model.setData(idx, self.can_generator_dict[entry]["B{}".format(d)])
             needs_updating = True
         # Label
         if self.can_generator_dict[entry]['previous'][37:61] != rxmessage[37:61]:
