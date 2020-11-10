@@ -1,6 +1,7 @@
 language: ruby
 os: osx
-rvm:
- - 2.2
- - jruby
+install:
+  - wget --quiet https://downloads.arduino.cc/arduino-1.8.13-macosx.zip
+  - mkdir $HOME/arduino_ide
+  - unzip arduino-1.8.13-macosx.zip -C $HOME/arduino_ide/
 
