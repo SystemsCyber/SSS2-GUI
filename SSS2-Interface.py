@@ -1040,55 +1040,125 @@ class SSS2Interface(QMainWindow):
                 value = self.can_data_model.last_modified_value
             except:
                 index = item
+            Message = "Only integer Numbers are allowed.\n"+value+" is invalid"
+
             # The parent is the row index
             logger.log(1,row_idx,column_idx)
-            
-            key = self.can_data_model.table_rows[row_idx]
-            col_name = self.can_data_model.header[column_idx]
-            self.can_generator_dict[key][col_name] = value
+            logger.log(1, value)
+            if(value != ''):
+                key = self.can_data_model.table_rows[row_idx]
+                col_name = self.can_data_model.header[column_idx]
+                row = self.can_generator_dict[key]
+                if col_name.startswith('B'): 
+                    try:
+                        if len(value)>2:
+                            Message = "Data Bytes must be in the range of 00 to FF.\n"+value+" is invalid"
+                            QMessageBox.warning(self,'Invalid Data Value',Message) 
 
-            column = self.can_generator_dict[key]
-            
+                        elif(int(value,16)>=0 and int(value,16)<=255):
+                            row[col_name] = value
+                    except:
+                        # Throw Warning   
+                        Message = "Data Bytes must be in the range of 00 to FF.\n"+value+" is invalid"
+                        QMessageBox.warning(self,'Invalid Data Value',Message) 
+                elif col_name.startswith("Thread"): 
+                    Message = "Thread Column is not editable"
+                    QMessageBox.warning(self,'Not Authorized',Message)  
+                elif col_name.startswith("Count"):
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        Message = "Only integer Numbers are allowed.\n"+value+" is invalid"
+                        QMessageBox.warning(self,'Invalid Data Value',Message)      
+                            
+                elif col_name.startswith("Index"):     
+                    pass        
+                elif col_name.startswith("Send"):     
+                    pass        
+                elif col_name.startswith("Channel"): 
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message)         
+                            
+                elif col_name.startswith("Period"):     
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        Message = "Only integer Numbers are allowed.\n"+value+" is invalid"
+                        QMessageBox.warning(self,'Invalid Data Value',Message) 
 
-            Thread_id = bytes([int(column['Thread'])])
-            Stop_aftr = (int(column['Count'])).to_bytes(2, byteorder='big')
-            if column['Send'] == "Yes":
-                  Enabled =b'\x01'
-            else:
-                Enabled =b'\x00'
+                elif col_name.startswith("Restart"):     
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message)  
+
+                elif col_name.startswith("Total"):     
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message) 
+
+                elif col_name.startswith("TX Count"):
+                    Message = "TX Count Column is not editable"
+                    QMessageBox.warning(self,'Not Authorized',Message) 
                 
-            channel = bytes([int(column['Channel'])])
-            TX_Period = (int(column['Period'])).to_bytes(4, byteorder='big') #bytes([int(column['Period'])])  #*4 bytes
-            TX_Delay  = (int(column['Restart'])).to_bytes(2, byteorder='big')
-            Num_Msgs  = (int(column['Total'])).to_bytes(4, byteorder='big') #bytes([int(column['Total'])])
+                elif col_name.startswith("CAN HEX ID"):     
+                    try:
+                        int(value,16)
+                        # assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message) 
 
-            # index     = bytes([column['Index']])
-            
-            
-            ID        = bytes.fromhex(column['CAN HEX ID'])
-            DLC       = bytes([column['DLC']])
 
-            B0        = bytes.fromhex(column['B0'])  #bytes(column['B0'],'ascii')
-            B1        = bytes.fromhex(column['B1']) 
-            B2        = bytes.fromhex(column['B2']) 
-            B3        = bytes.fromhex(column['B3']) 
-            B4        = bytes.fromhex(column['B4']) 
-            B5        = bytes.fromhex(column['B5']) 
-            B6        = bytes.fromhex(column['B6']) 
-            B7        = bytes.fromhex(column['B7']) 
-      
-            # Tx_Num    = bytes([column['TX Count']])
-            Thread_Name    = column['Label'].encode('ascii')
-            # Counter = (int(column['TX Count'])).to_bytes(
-            #     4, byteorder='big')  # bytes([int(column['TX Count'])])
-            # command_string='EBC1 from Brake Contro5ller;    7;1;0;0; 100;   0;0;1;18F0010B;8; 0; 0; 0; 0; 0; 0; 0; 0'  
-            command_string = Thread_id + Stop_aftr + Enabled + channel + TX_Period + TX_Delay + Num_Msgs \
-                + ID + DLC+ B0 + B1 + B2 + B3 + B4 + B5 + B6 + B7 + Thread_Name
-            logger.debug(command_string)
-            self.send_command(command_string, CAN_THREADS_TYPE)
+                elif col_name.startswith("DLC"):
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(
+                            self, 'Invalid Data Value', Message)
 
-            # self.data_dict[key][col_name] = value
 
+                Thread_id = row['Thread'].replace(' ','')
+                Stop_aftr = (int(row['Count'])).to_bytes(2, byteorder='big')
+                if row['Send'] == "Yes":
+                    command_string = "GO,"+Thread_id+";1"
+                    self.send_command(command_string, COMMAND_TYPE)
+                else:
+                    command_string = "GO,"+Thread_id+";0"
+                    self.send_command(command_string, COMMAND_TYPE)
+                    
+                channel = row['Channel'].replace(' ','')
+                TX_Period = row['Period'] .replace(' ','')
+                TX_Delay  = row['Restart'].replace(' ','')
+                Num_Msgs  = row['Total'].replace(' ','')
+                # index     = bytes([row['Index']])
+                ID        = row['CAN HEX ID'].replace(' ','')
+                DLC       = row['DLC'].replace(' ','')
+
+                B0        = row['B0'].replace(' ','')  #bytes(row['B0'],'ascii')
+                B1        = row['B1'].replace(' ','')
+                B2        = row['B2'].replace(' ','')
+                B3        = row['B3'].replace(' ','')
+                B4        = row['B4'].replace(' ','')
+                B5        = row['B5'].replace(' ','')
+                B6        = row['B6'].replace(' ','')
+                B7        = row['B7'].replace(' ','')
+                # command_string = 'SM,0,3,2,0,250,2500,0,1,18FEF10B,8,DE,AD,BE,EF,06,07,08,0B'
+                                                        # sub message
+                command_string = "SM," + Thread_id + ";" + "0" + ";" +"0" + ";" + channel + ";" + TX_Period + ";" + TX_Delay+";" + Num_Msgs + ";"\
+                + "1;" + ID + ";" + DLC +";" + B0 +";"+ B1+";" + B2 +";"+ B3 +";"+ B4 +";"+ B5 +";"+ B6 +";"+ B7
+                logger.debug(command_string)
+                self.send_command(command_string, COMMAND_TYPE)
+           
             # The edit_settings flag is to ensure the user is the one editing the settings
             # Setting this flag is done with a mouse click. With out this check, the SSS2 can
             # call this function and it goes into a loop.
@@ -1287,8 +1357,10 @@ class SSS2Interface(QMainWindow):
     
     def enable_edit(self):
         self.edit_settings = True
+
     def enable_CAN_gen_edit(self):
         self.edit_CAN_settings=True
+
     def load_file(self):
         
         filters = "Smart Sensor Simulator Settings Files (*.SSS2);;All Files (*.*)"
@@ -1462,9 +1534,10 @@ class SSS2Interface(QMainWindow):
         # self.settings_tree.clicked.connect(self.clicked_setting)
         
         
-        # self.add_row_button = QPushButton("Add Row to Table", self)
-        # self.add_row_button.clicked.connect(self.add_can_table_row)
-        # self.can_tab_layout.addWidget(self.add_row_button,1,1,1,1)
+        add_row_button = QPushButton("Add Row to Table", self)
+        add_row_button.clicked.connect(self.add_can_table_row)
+        self.can_tab_layout.addWidget(add_row_button,1,1,1,1)
+
 
         clear_button = QPushButton("Clear Table")
         clear_button.clicked.connect(self.clear_can_table)
@@ -1479,12 +1552,14 @@ class SSS2Interface(QMainWindow):
         self.can_table.scrollToBottom()
         self.can_table.resizeColumnsToContents()
 
-    
-    # def add_can_table_row(self):
-    #     current_row = self.can_table.currentRow()
-    #     if current_row < 0:
-    #         current_row = self.can_table.rowCount()
-    #     self.can_table.insertRow(current_row)
+    def add_can_table_row(self):
+        command_string = "CT"
+        logger.debug(command_string)
+        self.send_command(command_string, COMMAND_TYPE)
+        # current_row = self.can_table.currentRow()
+        # if current_row < 0:
+        #     current_row = self.can_table.rowCount()
+        # self.can_table.insertRow(current_row)
 
     def fill_can_table(self,rxmessage):
         """ Arduino code generating message
@@ -1515,7 +1590,6 @@ class SSS2Interface(QMainWindow):
         # self.send_command("test",CAN_THREAD_TYPE)
         if entry not in self.can_generator_dict:
             self.can_generator_dict[entry] = {'previous':[None for i in rxmessage]}
-               
         #    return
         # else:
         #     if ( self.can_generator_dict[entry]['previous'][6:33] == rxmessage[6:33] and
@@ -1536,7 +1610,7 @@ class SSS2Interface(QMainWindow):
         if self.can_generator_dict[entry]['previous'][1] != rxmessage[1]:
             col = self.can_table_columns.index("Channel")
             idx = self.can_data_model.index(row, col)
-            self.can_generator_dict[entry]["Channel"] = rxmessage[1]
+            self.can_generator_dict[entry]["Channel"] = str(rxmessage[1])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Channel"])
             needs_updating = True
         # Thread
@@ -1557,7 +1631,7 @@ class SSS2Interface(QMainWindow):
         if self.can_generator_dict[entry]['previous'][6] != rxmessage[6]:
             col = self.can_table_columns.index("DLC")
             idx = self.can_data_model.index(row, col)
-            self.can_generator_dict[entry]["DLC"] = rxmessage[6]
+            self.can_generator_dict[entry]["DLC"] = str(rxmessage[6])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["DLC"])
             needs_updating = True
         # Send/Enabled
@@ -1590,14 +1664,14 @@ class SSS2Interface(QMainWindow):
         if self.can_generator_dict[entry]['previous'][15] != rxmessage[15]:
             col = self.can_table_columns.index("Count")
             idx = self.can_data_model.index(row, col)
-            self.can_generator_dict[entry]["Count"] =  rxmessage[15]
+            self.can_generator_dict[entry]["Count"] =  str(rxmessage[15])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Count"])
             needs_updating = True
         # Total
         if self.can_generator_dict[entry]['previous'][16:20] != rxmessage[16:20]:
             col = self.can_table_columns.index("Total")
             idx = self.can_data_model.index(row, col)
-            self.can_generator_dict[entry]["Total"] = struct.unpack("<L",rxmessage[16:20])[0]
+            self.can_generator_dict[entry]["Total"] = "{:4d}".format(struct.unpack("<L",rxmessage[16:20])[0])
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Total"])
             needs_updating = True
         # Hex ID
@@ -1977,7 +2051,7 @@ class CANTableModel(QAbstractTableModel):
             # self.dataChanged.emit(index, index)
             return True
         elif role == Qt.EditRole and index.isValid():
-            print("entered setData at Row: ",index.row(),index.column(),value)
+            print("entered setData at Row:",index.row(),"Column:",index.column(),"Value:", value)
             print("Role: ",role)
             key = self.table_rows[index.row()]
             col_name = self.header[index.column()]
@@ -1986,7 +2060,7 @@ class CANTableModel(QAbstractTableModel):
             self.last_modified_column = index.column()
             self.last_modified_value = value
             self.dataChanged.emit(index, index)
-            print("Modified Column",index.column())
+            # print("Modified Column",index.column())
             
 
 
