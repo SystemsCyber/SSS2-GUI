@@ -41,7 +41,6 @@ from PyQt5.QtWidgets import (QMainWindow,
                              QTabWidget)
 from PyQt5.QtCore import Qt, QTimer, QAbstractTableModel, QCoreApplication, QSize, QAbstractItemModel, QSortFilterProxyModel, QVariant
 from PyQt5.QtGui import QIcon, QStandardItemModel, QStandardItem
-
 import winshell
 import hashlib
 
@@ -432,6 +431,8 @@ class SSS2Interface(QMainWindow):
         self.can_dict={}
         self.can_generator_dict = {}
         #self.entryset = set()
+        self.edit_CAN_settings=True
+
         self.status_message_2 = b'\x00'*64
         self.export_path =  os.path.join(winshell.my_documents(), "SSS2")
         if not os.path.isdir(self.export_path):
@@ -1043,7 +1044,7 @@ class SSS2Interface(QMainWindow):
                 value = self.can_data_model.last_modified_value
             except:
                 index = item
-            Message = "Only integer Numbers are allowed.\n"+value+" is invalid"
+            Message = "Only integer Numbers are allowed.\n"+str(value)+" is invalid"
 
             # The parent is the row index
             logger.log(1,row_idx,column_idx)
@@ -1139,7 +1140,7 @@ class SSS2Interface(QMainWindow):
 
                 Thread_id = row['Thread'].replace(' ','')
                 Stop_aftr = (int(row['Count'])).to_bytes(2, byteorder='big')
-                if row['Send'].upper() == "YES":
+                if row['Send'] == 2:
                     command_string = "GO,"+Thread_id+";1"
                     self.send_command(command_string, COMMAND_TYPE)
                 else:
@@ -1650,10 +1651,12 @@ class SSS2Interface(QMainWindow):
             send = rxmessage[32]
             col = self.can_table_columns.index("Send")
             idx = self.can_data_model.index(row, col)
-            if send == 0:
-                self.can_generator_dict[entry]["Send"] = "No"
+            # if send:
+            if send == 1:
+                self.can_generator_dict[entry]["Send"] = 2
+            
             else:
-                self.can_generator_dict[entry]["Send"] = "Yes"
+                self.can_generator_dict[entry]["Send"] = 0
             self.can_data_model.setData(idx, self.can_generator_dict[entry]["Send"])
             needs_updating = True
         # Period
@@ -1714,7 +1717,7 @@ class SSS2Interface(QMainWindow):
         
         if needs_updating:
             self.can_data_model.aboutToUpdate()
-            self.can_data_model.setDataDict(self.can_generator_dict)
+            self.can_data_model.setDataDict(self.can_generator_dict)    
             self.can_data_model.signalUpdate()
             self.can_table.resizeRowsToContents()     
             self.can_table.scrollToBottom()
@@ -2046,6 +2049,10 @@ class CANTableModel(QAbstractTableModel):
             key = self.table_rows[index.row()]
             col_name = self.header[index.column()]
             return str(self.data_dict[key][col_name])
+        elif  self.header[index.column()]=="Send" and role==Qt.CheckStateRole:
+            key = self.table_rows[index.row()]
+            col_name = self.header[index.column()]
+            return self.data_dict[key][col_name]
         else:
             return QVariant()
 
@@ -2053,14 +2060,14 @@ class CANTableModel(QAbstractTableModel):
             flags = super(CANTableModel, self).flags(index)
             flags |= ~Qt.ItemIsEditable
             # print("Flag: ",flags)
-            return Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable #flags
+            return Qt.ItemIsUserCheckable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable  # flags
 
     def setData(self, index, value, role = Qt.DisplayRole):
         
         if role == Qt.DisplayRole and index.isValid():
             # self.dataChanged.emit(index, index)
             return True
-        elif role == Qt.EditRole and index.isValid():
+        elif (role == Qt.EditRole or role == Qt.CheckStateRole) and index.isValid():
             print("entered setData at Row:",index.row(),"Column:",index.column(),"Value:", value)
             print("Role: ",role)
             key = self.table_rows[index.row()]
@@ -2068,14 +2075,13 @@ class CANTableModel(QAbstractTableModel):
             # self.data_dict[key][col_name] = value
             self.last_modified_row = index.row()
             self.last_modified_column = index.column()
-            self.last_modified_value = value
+            if col_name =="Send":
+                self.last_modified_value = value
+            else:
+                self.last_modified_value = value
+
             self.dataChanged.emit(index, index)
             # print("Modified Column",index.column())
-            
-
-
-
-           
             return True
         else:
             print("False")
