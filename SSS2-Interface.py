@@ -488,8 +488,8 @@ class SSS2Interface(QMainWindow):
 
         # was it found?
         if self.sss is None:
-            #QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
-            #logger.debug("No SSS2 Present.")
+            QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
+            logger.debug("No SSS2 Present.")
             return False
 
         logger.debug(self.sss)
@@ -559,7 +559,7 @@ class SSS2Interface(QMainWindow):
             while self.rx_queue.qsize():
                 #Get a message from the queue. These are raw bytes
                 rxmessage = self.rx_queue.get()
-                #logger.debug(" ".join(["{:02X}".format(b) for b in rxmessage]))
+                # logger.debug(" ".join(["{:02X}".format(b) for b in rxmessage]))
                     
                 self.last_usb_message_time = time.time()
                 rxmessage_type = rxmessage[USB_FRAME_TYPE_LOC] & USB_FRAME_TYPE_MASK
@@ -567,10 +567,13 @@ class SSS2Interface(QMainWindow):
                     #Status Message
                     if   rxmessage[0] & 0x0F == 1:
                         self.parse_status_message_one(rxmessage)
+                        # logger.debug(rxmessage)
                     elif rxmessage[0] & 0x0F == 2:
                         self.parse_status_message_two(rxmessage)
+                        # logger.debug(rxmessage)
                     elif rxmessage[0] & 0x0F == 3:
                         self.parse_status_message_three(rxmessage)
+                        # logger.debug(rxmessage)
                     #self.settings_tree.model().dataChanged.connect(self.change_setting)
                 elif rxmessage_type == COMMAND_TYPE:
                     pass # the SSS2 doesn't send commands to the computer
@@ -1073,9 +1076,15 @@ class SSS2Interface(QMainWindow):
                         QMessageBox.warning(self,'Invalid Data Value',Message)      
                             
                 elif col_name.startswith("Index"):     
-                    pass        
-                elif col_name.startswith("Send"):     
-                    pass        
+                    try:
+                        assert value.isnumeric()
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message)                 elif col_name.startswith("Send"):     
+                    try:
+                        row[col_name] = value
+                    except:
+                        QMessageBox.warning(self,'Invalid Data Value',Message)   
                 elif col_name.startswith("Channel"): 
                     try:
                         assert value.isnumeric()
@@ -1129,7 +1138,7 @@ class SSS2Interface(QMainWindow):
 
                 Thread_id = row['Thread'].replace(' ','')
                 Stop_aftr = (int(row['Count'])).to_bytes(2, byteorder='big')
-                if row['Send'] == "Yes":
+                if row['Send'].upper() == "YES":
                     command_string = "GO,"+Thread_id+";1"
                     self.send_command(command_string, COMMAND_TYPE)
                 else:
@@ -2083,44 +2092,6 @@ class Proxy(QSortFilterProxyModel):
 
     def headerData(self, section, orientation, role):
         return self.sourceModel().headerData(section, orientation, role)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
