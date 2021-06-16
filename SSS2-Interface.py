@@ -1080,7 +1080,8 @@ class SSS2Interface(QMainWindow):
                         assert value.isnumeric()
                         row[col_name] = value
                     except:
-                        QMessageBox.warning(self,'Invalid Data Value',Message)                 elif col_name.startswith("Send"):     
+                        QMessageBox.warning(self,'Invalid Data Value',Message)                 
+                elif col_name.startswith("Send"):     
                     try:
                         row[col_name] = value
                     except:
