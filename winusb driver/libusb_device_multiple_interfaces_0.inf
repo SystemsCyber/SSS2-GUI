@@ -42,15 +42,15 @@
 ; ========= START USER CONFIGURABLE SECTION ===========
 ; =====================================================
 
-DeviceName = "Olimex ARM-USB-TINY (Channel A)"
+DeviceName = "Smart Sensor Simulator 2"
 ; Make sure "VID_" and "PID_" are always part of the strings below
-VendorID = "VID_15ba"
-ProductID = "PID_0004"
+VendorID = VID_16C0
+ProductID = "PID_0486"
 InterfaceID = "MI_00"
-DeviceGUID = "{d35924d6-3e16-4a9e-9782-5524a4b79ba0}"
-DeviceClassGUID = "{78a1c341-4539-11d3-b88d-00c04fad5171}"
+DeviceGUID = "{6a8c818a-890c-4b39-8e61-3e3d7c9ff3c5}"
+DeviceClassGUID = "{745a17a0-74d3-11d0-b6fe-00a0c90f57da}"
 ; Date MUST be in MM/DD/YYYY format
-Date = "01/08/2010"
+Date = "09/22/2020"
 
 ; =====================================================
 ; ========== END USER CONFIGURABLE SECTION ============
