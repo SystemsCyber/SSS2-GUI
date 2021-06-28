@@ -381,7 +381,7 @@ class USBThread(threading.Thread):
 
     def run(self):
         while True:
-            time.sleep(0.001)
+            # time.sleep(0.001)
             try:
                 data_stream = bytes(self.root.sss.read(USB_HID_INPUT_ENDPOINT_ADDRESS, USB_HID_LENGTH,0)) #USB_HID_TIMEOUT
                 # logger.debug(data_stream)
@@ -420,6 +420,24 @@ class USBThread(threading.Thread):
         self.root.usb_signal = False
         time.sleep(1)
 
+
+class ReadCANThread(threading.Thread):
+    def __init__(self, parent, rx_can_queue):
+        self.root = parent
+        threading.Thread.__init__(self)
+        # self.rx_can_queue = rx_can_queue
+
+    def run(self):
+        while True:
+            while self.root.rx_can_queue.qsize():
+                try:
+                    self.root.parse_can_message(self.root.rx_can_queue.get())
+                except Exception as exc:
+                    logger.exception(exc)
+                    logger.debug("ReadCANThread Ending.")
+        time.sleep(1)
+
+
 class SSS2Interface(QMainWindow):
     def __init__(self):
         super(SSS2Interface, self).__init__()
@@ -430,6 +448,7 @@ class SSS2Interface(QMainWindow):
         self.load_settings = False
         self.can_dict={}
         self.can_generator_dict = {}
+        self.read_can_dict = {}
         #self.entryset = set()
         self.edit_CAN_settings=True
 
@@ -489,8 +508,8 @@ class SSS2Interface(QMainWindow):
 
         # was it found?
         if self.sss is None:
-            QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
-            logger.debug("No SSS2 Present.")
+            # QMessageBox.warning(self,"SSS2 Missing","Please connect the Smart Sensor Simulator 2 with power and USB. Ensure the SSS2 has the latest firmware.")
+            # logger.debug("No SSS2 Present.")
             return False
 
         logger.debug(self.sss)
@@ -510,9 +529,15 @@ class SSS2Interface(QMainWindow):
             return False
         
         self.rx_queue = queue.Queue(100000)
+        self.rx_can_queue = queue.Queue(100000)
+
         self.read_usb_hid_thread = USBThread(self, self.rx_queue)
         self.read_usb_hid_thread.setDaemon(True) #needed to close the thread when the application closes.
         self.read_usb_hid_thread.start()
+
+        # self.read_can_thread = ReadCANThread(self, self.rx_can_queue)
+        # self.read_can_thread.setDaemon(True) #needed to close the thread when the application closes.
+        # self.read_can_thread.start()
 
         sm = self.settings_model["Potentiometers"]
         # Iterate though all the bytes in the incomming message
@@ -580,7 +605,8 @@ class SSS2Interface(QMainWindow):
                     pass # the SSS2 doesn't send commands to the computer
                 elif rxmessage_type == MESSAGE_TYPE:
                     # Received a network message
-                    self.parse_can_message(rxmessage)    
+                    self.parse_can_message(rxmessage)  
+                    # self.rx_can_queue.put(rxmessage)
                 elif rxmessage_type == CAN_THREADS_TYPE:
                     # Received a network message
                     # logger.debug(rxmessage)
@@ -592,35 +618,7 @@ class SSS2Interface(QMainWindow):
             self.show_no_usb()
             self.usb_signal = self.setup_usb()
 
-    def parse_can_message(self, rxmessage):
-        message_type = rxmessage[0]
-        if (message_type & 0x20) != 0x20:
-            return
-        num_can_messages = message_type & 0x03
-        for i in range(num_can_messages):
-            can_message_index = i * CAN_FRAME_LENGTH + 1
-            time_buff = rxmessage[(can_message_index + TIMESTAMP_OFFSET):(can_message_index + TIMESTAMP_OFFSET + 4)]
-            timestamp = struct.unpack("<L",time_buff)[0]
-            channel_dlc = rxmessage[can_message_index + CHANNEL_DLC_OFFSET]
-            channel = (channel_dlc & 0xF0) >> 4
-            dlc = (channel_dlc & 0x0F)
-            microseconds_per_second = struct.unpack("<L",rxmessage[can_message_index + MICROSECONDS_OFFSET:can_message_index + MICROSECONDS_OFFSET  + 3]+b'\x00')[0]
-            canID_EXT = struct.unpack("<L",rxmessage[can_message_index + CAN_ID_OFFSET:can_message_index + CAN_ID_OFFSET + 4])[0]
-            canID = canID_EXT & 0x1FFFFFFF
-            extended = bool((canID_EXT & 0x80000000) >> 31)
-            can_data = struct.unpack("BBBBBBBB", rxmessage[can_message_index + CAN_DATA_OFFSET:can_message_index + CAN_DATA_OFFSET + 8])
-            timestamp += microseconds_per_second * 0.000001
-            #can_message = "{:d} {:12.6f} {:08X} {} {:d} {}".format(channel,timestamp,canID,extended,dlc," ".join(["{:02X}".format(b) for b in can_data]))
-            self.can_dict["{:08X}".format(canID)]={'channel': channel,
-                                    'timestamp':'{:12.6f}'.format(timestamp),
-                                    'dlc':"{:d}".format(dlc),
-                                    'bytes': " ".join(["{:02X}".format(b) for b in can_data])}
-            can_message="CH Timestamp CANID DLC Data\n"
-            for k,v in sorted(self.can_dict.items()):
-                can_message += "{} {} {} [{}] {}\n".format(v['channel'],v['timestamp'],k,v['dlc'],v['bytes'])
-            self.CAN_RX_text_box.setPlainText(can_message)
-            #print(can_message)
-
+    
     def show_no_usb(self):
         self.statusBar().showMessage("Missing - SSS2 not detected over USB.")
         self.ignition_key_button.setCheckState(Qt.PartiallyChecked)
@@ -670,21 +668,26 @@ class SSS2Interface(QMainWindow):
         
         self.LIN_suppress_box.setCheckState(Qt.PartiallyChecked)
         self.LIN_suppress_box.setEnabled(False)
-        
+         
+    def getHVOUT_voltage(self, reading):
+        return reading*0.049441804 + 1.94
 
+    def setHVOUT_voltage(self, voltage):
+        return "{:d}".format(int((float(voltage)-1.94)*20.22579915))
 
+    ## Parse Functions  
     def parse_status_message_one(self, rxmessage):
         """
         """
         s = self.settings_dict["Potentiometers"]
-        s["Group A"]["Pairs"]["U1U2"]["Pots"]["U1"]["Wiper Position"]    = rxmessage[1]
-        s["Group A"]["Pairs"]["U1U2"]["Pots"]["U2"]["Wiper Position"]    = rxmessage[2]
-        s["Group A"]["Pairs"]["U3U4"]["Pots"]["U3"]["Wiper Position"]    = rxmessage[3]
-        s["Group A"]["Pairs"]["U3U4"]["Pots"]["U4"]["Wiper Position"]    = rxmessage[4]
-        s["Group A"]["Pairs"]["U5U6"]["Pots"]["U5"]["Wiper Position"]    = rxmessage[5]
-        s["Group A"]["Pairs"]["U5U6"]["Pots"]["U6"]["Wiper Position"]    = rxmessage[6]
-        s["Group A"]["Pairs"]["U7U8"]["Pots"]["U7"]["Wiper Position"]    = rxmessage[7]
-        s["Group A"]["Pairs"]["U7U8"]["Pots"]["U8"]["Wiper Position"]    = rxmessage[8]
+        s["Group A"]["Pairs"]["U1U2"]["Pots"]["U1"]["Wiper Position"] = rxmessage[1]
+        s["Group A"]["Pairs"]["U1U2"]["Pots"]["U2"]["Wiper Position"] = rxmessage[2]
+        s["Group A"]["Pairs"]["U3U4"]["Pots"]["U3"]["Wiper Position"] = rxmessage[3]
+        s["Group A"]["Pairs"]["U3U4"]["Pots"]["U4"]["Wiper Position"] = rxmessage[4]
+        s["Group A"]["Pairs"]["U5U6"]["Pots"]["U5"]["Wiper Position"] = rxmessage[5]
+        s["Group A"]["Pairs"]["U5U6"]["Pots"]["U6"]["Wiper Position"] = rxmessage[6]
+        s["Group A"]["Pairs"]["U7U8"]["Pots"]["U7"]["Wiper Position"] = rxmessage[7]
+        s["Group A"]["Pairs"]["U7U8"]["Pots"]["U8"]["Wiper Position"] = rxmessage[8]
         s["Group B"]["Pairs"]["U09U10"]["Pots"]["U09"]["Wiper Position"] = rxmessage[9]
         s["Group B"]["Pairs"]["U09U10"]["Pots"]["U10"]["Wiper Position"] = rxmessage[10]
         s["Group B"]["Pairs"]["U11U12"]["Pots"]["U11"]["Wiper Position"] = rxmessage[11]
@@ -693,45 +696,73 @@ class SSS2Interface(QMainWindow):
         s["Group B"]["Pairs"]["U13U14"]["Pots"]["U14"]["Wiper Position"] = rxmessage[14]
         s["Group B"]["Pairs"]["U15U16"]["Pots"]["U15"]["Wiper Position"] = rxmessage[15]
         s["Group B"]["Pairs"]["U15U16"]["Pots"]["U16"]["Wiper Position"] = rxmessage[16]
-        
+
         sm = self.settings_model["Potentiometers"]
-        sm["Group A"]["Pairs"]["U1U2"]["Pots"]["U1"]["Wiper Position"].setText("{:d}".format(rxmessage[1]))
-        sm["Group A"]["Pairs"]["U1U2"]["Pots"]["U2"]["Wiper Position"].setText("{:d}".format(rxmessage[2]))
-        sm["Group A"]["Pairs"]["U3U4"]["Pots"]["U3"]["Wiper Position"].setText("{:d}".format(rxmessage[3]))
-        sm["Group A"]["Pairs"]["U3U4"]["Pots"]["U4"]["Wiper Position"].setText("{:d}".format(rxmessage[4]))
-        sm["Group A"]["Pairs"]["U5U6"]["Pots"]["U5"]["Wiper Position"].setText("{:d}".format(rxmessage[5]))
-        sm["Group A"]["Pairs"]["U5U6"]["Pots"]["U6"]["Wiper Position"].setText("{:d}".format(rxmessage[6]))
-        sm["Group A"]["Pairs"]["U7U8"]["Pots"]["U7"]["Wiper Position"].setText("{:d}".format(rxmessage[7]))
-        sm["Group A"]["Pairs"]["U7U8"]["Pots"]["U8"]["Wiper Position"].setText("{:d}".format(rxmessage[8]))
-        sm["Group B"]["Pairs"]["U09U10"]["Pots"]["U09"]["Wiper Position"].setText("{:d}".format(rxmessage[9]))
-        sm["Group B"]["Pairs"]["U09U10"]["Pots"]["U10"]["Wiper Position"].setText("{:d}".format(rxmessage[10]))
-        sm["Group B"]["Pairs"]["U11U12"]["Pots"]["U11"]["Wiper Position"].setText("{:d}".format(rxmessage[11]))
-        sm["Group B"]["Pairs"]["U11U12"]["Pots"]["U12"]["Wiper Position"].setText("{:d}".format(rxmessage[12]))
-        sm["Group B"]["Pairs"]["U13U14"]["Pots"]["U13"]["Wiper Position"].setText("{:d}".format(rxmessage[13]))
-        sm["Group B"]["Pairs"]["U13U14"]["Pots"]["U14"]["Wiper Position"].setText("{:d}".format(rxmessage[14]))
-        sm["Group B"]["Pairs"]["U15U16"]["Pots"]["U15"]["Wiper Position"].setText("{:d}".format(rxmessage[15]))
-        sm["Group B"]["Pairs"]["U15U16"]["Pots"]["U16"]["Wiper Position"].setText("{:d}".format(rxmessage[16]))
-        
-        s["Group A"]["Pairs"]["U1U2"]["Terminal A Voltage"]   = bool(rxmessage[CONFIGSWITCH_1_LOC] & U1U2P0ASWITCH_MASK)
-        s["Group A"]["Pairs"]["U3U4"]["Terminal A Voltage"]   = bool(rxmessage[CONFIGSWITCH_1_LOC] & U3U4P0ASWITCH_MASK)
-        s["Group A"]["Pairs"]["U5U6"]["Terminal A Voltage"]   = bool(rxmessage[CONFIGSWITCH_1_LOC] & U5U6P0ASWITCH_MASK)
-        s["Group A"]["Pairs"]["U7U8"]["Terminal A Voltage"]   = bool(rxmessage[CONFIGSWITCH_1_LOC] & U7U8P0ASWITCH_MASK)
-        s["Group B"]["Pairs"]["U09U10"]["Terminal A Voltage"] = bool(rxmessage[CONFIGSWITCH_1_LOC] & U9U10P0ASWITCH_MASK)
-        s["Group B"]["Pairs"]["U11U12"]["Terminal A Voltage"] = bool(rxmessage[CONFIGSWITCH_1_LOC] & U11U12P0ASWITCH_MASK)
-        s["Group B"]["Pairs"]["U13U14"]["Terminal A Voltage"] = bool(rxmessage[CONFIGSWITCH_1_LOC] & U13U14P0ASWITCH_MASK)
-        s["Group B"]["Pairs"]["U15U16"]["Terminal A Voltage"] = bool(rxmessage[CONFIGSWITCH_1_LOC] & U15U16P0ASWITCH_MASK)
+        sm["Group A"]["Pairs"]["U1U2"]["Pots"]["U1"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[1]))
+        sm["Group A"]["Pairs"]["U1U2"]["Pots"]["U2"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[2]))
+        sm["Group A"]["Pairs"]["U3U4"]["Pots"]["U3"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[3]))
+        sm["Group A"]["Pairs"]["U3U4"]["Pots"]["U4"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[4]))
+        sm["Group A"]["Pairs"]["U5U6"]["Pots"]["U5"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[5]))
+        sm["Group A"]["Pairs"]["U5U6"]["Pots"]["U6"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[6]))
+        sm["Group A"]["Pairs"]["U7U8"]["Pots"]["U7"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[7]))
+        sm["Group A"]["Pairs"]["U7U8"]["Pots"]["U8"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[8]))
+        sm["Group B"]["Pairs"]["U09U10"]["Pots"]["U09"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[9]))
+        sm["Group B"]["Pairs"]["U09U10"]["Pots"]["U10"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[10]))
+        sm["Group B"]["Pairs"]["U11U12"]["Pots"]["U11"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[11]))
+        sm["Group B"]["Pairs"]["U11U12"]["Pots"]["U12"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[12]))
+        sm["Group B"]["Pairs"]["U13U14"]["Pots"]["U13"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[13]))
+        sm["Group B"]["Pairs"]["U13U14"]["Pots"]["U14"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[14]))
+        sm["Group B"]["Pairs"]["U15U16"]["Pots"]["U15"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[15]))
+        sm["Group B"]["Pairs"]["U15U16"]["Pots"]["U16"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[16]))
+
+        s["Group A"]["Pairs"]["U1U2"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U1U2P0ASWITCH_MASK)
+        s["Group A"]["Pairs"]["U3U4"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U3U4P0ASWITCH_MASK)
+        s["Group A"]["Pairs"]["U5U6"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U5U6P0ASWITCH_MASK)
+        s["Group A"]["Pairs"]["U7U8"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U7U8P0ASWITCH_MASK)
+        s["Group B"]["Pairs"]["U09U10"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U9U10P0ASWITCH_MASK)
+        s["Group B"]["Pairs"]["U11U12"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U11U12P0ASWITCH_MASK)
+        s["Group B"]["Pairs"]["U13U14"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U13U14P0ASWITCH_MASK)
+        s["Group B"]["Pairs"]["U15U16"]["Terminal A Voltage"] = bool(
+            rxmessage[CONFIGSWITCH_1_LOC] & U15U16P0ASWITCH_MASK)
 
         for name, group in zip(PAIR_NAMES, GROUP_NAMES):
             state = s[group]["Pairs"][name]["Terminal A Voltage"]
             if state:
                 sm[group]["Pairs"][name]["Terminal A Voltage"].setText("+12V")
-                sm[group]["Pairs"][name]["Terminal A Voltage"].setCheckState(Qt.Checked)
+                sm[group]["Pairs"][name]["Terminal A Voltage"].setCheckState(
+                    Qt.Checked)
             else:
                 sm[group]["Pairs"][name]["Terminal A Voltage"].setText("+5V")
-                sm[group]["Pairs"][name]["Terminal A Voltage"].setCheckState(Qt.Unchecked)
-        
-        s["Group A"]["Terminal A Connection"] = not (bool(rxmessage[CONFIGSWITCH_2_LOC] & U28P0AENABLE_MASK))
-        s["Group B"]["Terminal A Connection"] = not (bool(rxmessage[CONFIGSWITCH_2_LOC] & U31P0AENABLE_MASK))
+                sm[group]["Pairs"][name]["Terminal A Voltage"].setCheckState(
+                    Qt.Unchecked)
+
+        s["Group A"]["Terminal A Connection"] = not (
+            bool(rxmessage[CONFIGSWITCH_2_LOC] & U28P0AENABLE_MASK))
+        s["Group B"]["Terminal A Connection"] = not (
+            bool(rxmessage[CONFIGSWITCH_2_LOC] & U31P0AENABLE_MASK))
         for group in ["Group A", "Group B"]:
             state = s[group]["Terminal A Connection"]
             if state:
@@ -740,52 +771,81 @@ class SSS2Interface(QMainWindow):
             else:
                 sm[group]["Terminal A Connection"].setText("Open")
                 sm[group]["Terminal A Connection"].setCheckState(Qt.Unchecked)
-        
+
         self.settings_dict["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U34"]["Wiper Position"] = rxmessage[U34_WIPER_LOC]
         self.settings_dict["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U36"]["Wiper Position"] = rxmessage[U36_WIPER_LOC]
         self.settings_dict["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U37"]["Wiper Position"] = rxmessage[U37_WIPER_LOC]
-        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U34"]["Wiper Position"].setText("{:d}".format(rxmessage[U34_WIPER_LOC]))
-        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U36"]["Wiper Position"].setText("{:d}".format(rxmessage[U36_WIPER_LOC]))
-        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U37"]["Wiper Position"].setText("{:d}".format(rxmessage[U37_WIPER_LOC]))
+        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U34"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[U34_WIPER_LOC]))
+        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U36"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[U36_WIPER_LOC]))
+        self.settings_model["Potentiometers"]["Others"]["Pairs"]["I2CPots"]["Pots"]["U37"]["Wiper Position"].setText(
+            "{:d}".format(rxmessage[U37_WIPER_LOC]))
 
+        self.settings_dict["DACs"]["Vout1"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[17:19])[0]
+        self.settings_dict["DACs"]["Vout2"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[19:21])[0]
+        self.settings_dict["DACs"]["Vout3"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[21:23])[0]
+        self.settings_dict["DACs"]["Vout4"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[23:25])[0]
+        self.settings_dict["DACs"]["Vout5"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[25:27])[0]
+        self.settings_dict["DACs"]["Vout6"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[27:29])[0]
+        self.settings_dict["DACs"]["Vout7"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[29:31])[0]
+        self.settings_dict["DACs"]["Vout8"]["Average Voltage"] = struct.unpack(
+            '<H', rxmessage[31:33])[0]
 
-        self.settings_dict["DACs"]["Vout1"]["Average Voltage"] = struct.unpack('<H',rxmessage[17:19])[0]
-        self.settings_dict["DACs"]["Vout2"]["Average Voltage"] = struct.unpack('<H',rxmessage[19:21])[0]
-        self.settings_dict["DACs"]["Vout3"]["Average Voltage"] = struct.unpack('<H',rxmessage[21:23])[0]
-        self.settings_dict["DACs"]["Vout4"]["Average Voltage"] = struct.unpack('<H',rxmessage[23:25])[0]
-        self.settings_dict["DACs"]["Vout5"]["Average Voltage"] = struct.unpack('<H',rxmessage[25:27])[0]
-        self.settings_dict["DACs"]["Vout6"]["Average Voltage"] = struct.unpack('<H',rxmessage[27:29])[0]
-        self.settings_dict["DACs"]["Vout7"]["Average Voltage"] = struct.unpack('<H',rxmessage[29:31])[0]
-        self.settings_dict["DACs"]["Vout8"]["Average Voltage"] = struct.unpack('<H',rxmessage[31:33])[0]
-        
         for name in VOUT_NAMES:
             self.settings_model["DACs"][name]["Average Voltage"].setText(
                 "{:0.2f}".format(self.settings_dict["DACs"][name]["Average Voltage"]/1000))
-         
-        self.settings_dict["HVAdjOut"]["Average Voltage"] =  rxmessage[HVADJOUT_LOC]
+
+        self.settings_dict["HVAdjOut"]["Average Voltage"] = rxmessage[HVADJOUT_LOC]
         self.settings_model["HVAdjOut"]["Average Voltage"].setText(
             "{:0.2f}".format(self.getHVOUT_voltage(rxmessage[HVADJOUT_LOC])))
 
         s = self.settings_dict["Switches"]
-        s["Port 10 or 19"]["State"]              = bool(rxmessage[CONFIGSWITCH_2_LOC] & P10OR19SWITCH_MASK)
-        s["Port 15 or 18"]["State"]              = bool(rxmessage[CONFIGSWITCH_2_LOC] & P15OR18SWITCH_MASK)
-        s["CAN2 or J1708"]["State"]              = bool(rxmessage[CONFIGSWITCH_2_LOC] & J1708ORCAN1_MASK)
-        s["PWMs or CAN2"]["State"]               = bool(rxmessage[CONFIGSWITCH_2_LOC] & CAN2CONNECT_MASK)
-        s["CAN0 Resistor 1"]["State"]            = bool(rxmessage[PWMSWITCHES_LOC] & CAN0TERM1_MASK)
-        s["CAN1 Resistor 1"]["State"]            = bool(rxmessage[PWMSWITCHES_LOC] & CAN1TERM1_MASK)
-        s["CAN2 Resistor 1"]["State"]            = bool(rxmessage[PWMSWITCHES_LOC] & CAN2TERM1_MASK)
-        s["LIN Master Pullup Resistor"]["State"] = bool(rxmessage[PWMSWITCHES_LOC] & LIN_PULLUP_MASK)
-        s["PWM3 or 12V"]["State"]                = bool(rxmessage[HBRIDGE_LOC] & TWELVE_OUT_1_MASK)
-        s["12V Out 2"]["State"]                  = bool(rxmessage[HBRIDGE_LOC] & TWELVE_OUT_2_MASK)
-        s["PWM4 or Ground"]["State"]             = bool(rxmessage[HBRIDGE_LOC] & GROUND_OUT_1_MASK)
-        s["Ground Out 2"]["State"]               = bool(rxmessage[HBRIDGE_LOC] & GROUND_OUT_2_MASK)
-        s["PWM1 Connect"]["State"]               = bool(rxmessage[PWMSWITCHES_LOC] & PWM1_CONNECT_MASK)
-        s["PWM2 Connect"]["State"]               = bool(rxmessage[PWMSWITCHES_LOC] & PWM2_CONNECT_MASK)
-        s["PWM3 Connect"]["State"]               = bool(rxmessage[PWMSWITCHES_LOC] & PWM3_CONNECT_MASK)
-        s["PWM4 Connect"]["State"]               = bool(rxmessage[PWMSWITCHES_LOC] & PWM4_CONNECT_MASK)
-        s["LIN to SHLD"]["State"]                = bool(rxmessage[CONFIGSWITCH_2_LOC] & LINTOSHIELD_MASK)
-        s["LIN to Port 16"]["State"]             = bool(rxmessage[CONFIGSWITCH_2_LOC] & LINTO16_MASK)
-        s["Ignition"]["State"]                   = bool(rxmessage[HBRIDGE_LOC] & IGNITION_RELAY_MASK)
+        s["Port 10 or 19"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & P10OR19SWITCH_MASK)
+        s["Port 15 or 18"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & P15OR18SWITCH_MASK)
+        s["CAN2 or J1708"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & J1708ORCAN1_MASK)
+        s["PWMs or CAN2"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & CAN2CONNECT_MASK)
+        s["CAN0 Resistor 1"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & CAN0TERM1_MASK)
+        s["CAN1 Resistor 1"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & CAN1TERM1_MASK)
+        s["CAN2 Resistor 1"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & CAN2TERM1_MASK)
+        s["LIN Master Pullup Resistor"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & LIN_PULLUP_MASK)
+        s["PWM3 or 12V"]["State"] = bool(
+            rxmessage[HBRIDGE_LOC] & TWELVE_OUT_1_MASK)
+        s["12V Out 2"]["State"] = bool(
+            rxmessage[HBRIDGE_LOC] & TWELVE_OUT_2_MASK)
+        s["PWM4 or Ground"]["State"] = bool(
+            rxmessage[HBRIDGE_LOC] & GROUND_OUT_1_MASK)
+        s["Ground Out 2"]["State"] = bool(
+            rxmessage[HBRIDGE_LOC] & GROUND_OUT_2_MASK)
+        s["PWM1 Connect"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & PWM1_CONNECT_MASK)
+        s["PWM2 Connect"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & PWM2_CONNECT_MASK)
+        s["PWM3 Connect"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & PWM3_CONNECT_MASK)
+        s["PWM4 Connect"]["State"] = bool(
+            rxmessage[PWMSWITCHES_LOC] & PWM4_CONNECT_MASK)
+        s["LIN to SHLD"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & LINTOSHIELD_MASK)
+        s["LIN to Port 16"]["State"] = bool(
+            rxmessage[CONFIGSWITCH_2_LOC] & LINTO16_MASK)
+        s["Ignition"]["State"] = bool(
+            rxmessage[HBRIDGE_LOC] & IGNITION_RELAY_MASK)
 
         sm = self.settings_model["Switches"]
         for name in SWITCH_NAMES:
@@ -796,26 +856,38 @@ class SSS2Interface(QMainWindow):
                 sm[name]["State"].setCheckState(Qt.Unchecked)
 
         # Parse the incoming message for PWM signal related information
-        self.settings_dict["PWMs"]["PWM1"]["Duty Cycle"] = struct.unpack('<H',rxmessage[35:37])[0]
-        self.settings_dict["PWMs"]["PWM2"]["Duty Cycle"] = struct.unpack('<H',rxmessage[37:39])[0]
-        self.settings_dict["PWMs"]["PWM3"]["Duty Cycle"] = struct.unpack('<H',rxmessage[39:41])[0]
-        self.settings_dict["PWMs"]["PWM4"]["Duty Cycle"] = struct.unpack('<H',rxmessage[41:43])[0]
-        self.settings_dict["PWMs"]["PWM5"]["Duty Cycle"] = struct.unpack('<H',rxmessage[43:45])[0]
-        self.settings_dict["PWMs"]["PWM6"]["Duty Cycle"] = struct.unpack('<H',rxmessage[45:47])[0]
+        self.settings_dict["PWMs"]["PWM1"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[35:37])[0]
+        self.settings_dict["PWMs"]["PWM2"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[37:39])[0]
+        self.settings_dict["PWMs"]["PWM3"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[39:41])[0]
+        self.settings_dict["PWMs"]["PWM4"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[41:43])[0]
+        self.settings_dict["PWMs"]["PWM5"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[43:45])[0]
+        self.settings_dict["PWMs"]["PWM6"]["Duty Cycle"] = struct.unpack(
+            '<H', rxmessage[45:47])[0]
 
-        self.settings_dict["PWMs"]["PWM1"]["Frequency"] = struct.unpack('<H',rxmessage[54:56])[0]
-        self.settings_dict["PWMs"]["PWM2"]["Frequency"] = struct.unpack('<H',rxmessage[54:56])[0]
-        self.settings_dict["PWMs"]["PWM3"]["Frequency"] = struct.unpack('<H',rxmessage[56:58])[0]
-        self.settings_dict["PWMs"]["PWM4"]["Frequency"] = struct.unpack('<H',rxmessage[56:58])[0]
-        self.settings_dict["PWMs"]["PWM5"]["Frequency"] = struct.unpack('<H',rxmessage[58:60])[0]
-        self.settings_dict["PWMs"]["PWM6"]["Frequency"] = struct.unpack('<H',rxmessage[58:60])[0]
+        self.settings_dict["PWMs"]["PWM1"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[54:56])[0]
+        self.settings_dict["PWMs"]["PWM2"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[54:56])[0]
+        self.settings_dict["PWMs"]["PWM3"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[56:58])[0]
+        self.settings_dict["PWMs"]["PWM4"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[56:58])[0]
+        self.settings_dict["PWMs"]["PWM5"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[58:60])[0]
+        self.settings_dict["PWMs"]["PWM6"]["Frequency"] = struct.unpack(
+            '<H', rxmessage[58:60])[0]
 
         # Set the display model in the tree.
         for name in PWM_NAMES:
             self.settings_model["PWMs"][name]["Duty Cycle"].setText(
                 "{:0.2f}%".format(self.settings_dict["PWMs"][name]["Duty Cycle"]/4096*100))
             self.settings_model["PWMs"][name]["Frequency"].setText(
-                "{:d}".format(self.settings_dict["PWMs"][name]["Frequency"]))   
+                "{:d}".format(self.settings_dict["PWMs"][name]["Frequency"]))
 
         # Check the ignition state
         self.settings_dict["Switches"]
@@ -825,20 +897,21 @@ class SSS2Interface(QMainWindow):
             self.ignition_key_button.setCheckState(Qt.Unchecked)
 
         s = self.settings_dict["Switches"]
-        s["PWM4_28 Connect"]["State"]            = bool(rxmessage[TERMSWITCHES_LOC] & PWM4_P28_MASK)
-        s["PWM5 Connect"]["State"]               = bool(rxmessage[TERMSWITCHES_LOC] & PWM5_CONNECT_MASK)
-        s["PWM6 Connect"]["State"]               = bool(rxmessage[TERMSWITCHES_LOC] & PWM6_CONNECT_MASK)
-        s["CAN1 Connect"]["State"]               = bool(rxmessage[TERMSWITCHES_LOC] & CAN1_CONNECT_MASK)
-        s["CAN0 Resistor 2"]["State"]            = bool(rxmessage[TERMSWITCHES_LOC] & CAN0TERM2_MASK)
-        s["CAN2 Resistor 2"]["State"]            = bool(rxmessage[TERMSWITCHES_LOC] & CAN2TERM2_MASK)
-        s["CAN1 Resistor 2"]["State"]            = bool(rxmessage[TERMSWITCHES_LOC] & CAN1TERM2_MASK)
-        
-    def getHVOUT_voltage(self, reading):
-        return reading*0.049441804 + 1.94
+        s["PWM4_28 Connect"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & PWM4_P28_MASK)
+        s["PWM5 Connect"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & PWM5_CONNECT_MASK)
+        s["PWM6 Connect"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & PWM6_CONNECT_MASK)
+        s["CAN1 Connect"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & CAN1_CONNECT_MASK)
+        s["CAN0 Resistor 2"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & CAN0TERM2_MASK)
+        s["CAN2 Resistor 2"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & CAN2TERM2_MASK)
+        s["CAN1 Resistor 2"]["State"] = bool(
+            rxmessage[TERMSWITCHES_LOC] & CAN1TERM2_MASK)
 
-    def setHVOUT_voltage(self, voltage):
-        return "{:d}".format(int((float(voltage)-1.94)*20.22579915))
-        
     def parse_status_message_two(self, rxmessage):
         s  = self.settings_dict["Potentiometers"]
         sm = self.settings_model["Potentiometers"]
@@ -947,9 +1020,61 @@ class SSS2Interface(QMainWindow):
         self.lin_tx_count.setText("{}".format(struct.unpack("<H",
             rxmessage[LIN_TX_COUNT_LOC:LIN_TX_COUNT_LOC+2])[0]))
 
-
     def parse_status_message_three(self, rxmessage):
         pass
+
+    def parse_can_message(self, rxmessage):
+        message_type = rxmessage[0]
+
+        if (message_type & 0x20) != 0x20:
+            return
+        num_can_messages = message_type & 0x03
+        # logger.debug("num_can_messages: %s",num_can_messages)
+        for i in range(num_can_messages):
+            can_message_index = i * CAN_FRAME_LENGTH + 1
+            time_buff = rxmessage[(
+                can_message_index + TIMESTAMP_OFFSET):(can_message_index + TIMESTAMP_OFFSET + 4)]
+            timestamp = struct.unpack("<L", time_buff)[0]
+            channel_dlc = rxmessage[can_message_index + CHANNEL_DLC_OFFSET]
+            channel = (channel_dlc & 0xF0) >> 4
+            dlc = (channel_dlc & 0x0F)
+            microseconds_per_second = struct.unpack(
+                "<L", rxmessage[can_message_index + MICROSECONDS_OFFSET:can_message_index + MICROSECONDS_OFFSET + 3]+b'\x00')[0]
+            canID_EXT = struct.unpack(
+                "<L", rxmessage[can_message_index + CAN_ID_OFFSET:can_message_index + CAN_ID_OFFSET + 4])[0]
+            canID = canID_EXT & 0x1FFFFFFF
+            extended = bool((canID_EXT & 0x80000000) >> 31)
+            can_data = struct.unpack(
+                "BBBBBBBB", rxmessage[can_message_index + CAN_DATA_OFFSET:can_message_index + CAN_DATA_OFFSET + 8])
+            timestamp += microseconds_per_second * 0.000001
+            # can_message = "{:d} {:12.6f} {:08X} {} {:d} {}".format(channel,timestamp,canID,extended,dlc," ".join(["{:02X}".format(b) for b in can_data]))
+            # logger.info(can_message)
+
+            can_id = "{:08X}".format(canID)
+            if can_id not in self.read_can_dict:
+                self.read_can_dict[can_id] = {}
+                self.read_can_dict[can_id]["count"] = 1
+                self.read_can_table.resizeRowsToContents()
+                self.read_can_table.scrollToBottom()
+                self.read_can_table.resizeColumnsToContents()
+            self.read_can_dict[can_id]["CH"] = channel
+            self.read_can_dict[can_id]["CAN-ID"] = can_id
+            self.read_can_dict[can_id]["timestamp"] = timestamp
+            self.read_can_dict[can_id]["dlc"] = dlc
+            self.read_can_dict[can_id]["B0"] = "{:02X}".format(can_data[0])
+            self.read_can_dict[can_id]["B1"] = "{:02X}".format(can_data[1])
+            self.read_can_dict[can_id]["B2"] = "{:02X}".format(can_data[2])
+            self.read_can_dict[can_id]["B3"] = "{:02X}".format(can_data[3])
+            self.read_can_dict[can_id]["B4"] = "{:02X}".format(can_data[4])
+            self.read_can_dict[can_id]["B5"] = "{:02X}".format(can_data[5])
+            self.read_can_dict[can_id]["B6"] = "{:02X}".format(can_data[6])
+            self.read_can_dict[can_id]["B7"] = "{:02X}".format(can_data[7])
+            self.read_can_dict[can_id]["count"] += 1
+        
+        self.read_can_data_model.aboutToUpdate()
+        self.read_can_data_model.setDataDict(self.read_can_dict)
+        self.read_can_data_model.signalUpdate()
+      
 
     def clicked_setting(self, index):
         parent = index.parent()
@@ -1033,7 +1158,6 @@ class SSS2Interface(QMainWindow):
             # call this function and it goes into a loop.
             self.edit_settings = False
          
-
     def change_CAN_gen_setting(self, item):
         if self.edit_CAN_settings or self.load_settings:
             # See if an item was passed in, or is it an index.
@@ -1554,6 +1678,125 @@ class SSS2Interface(QMainWindow):
         clear_button.clicked.connect(self.clear_can_table)
         self.can_tab_layout.addWidget(clear_button,1,2,1,1)
     
+    def build_network_tab(self):
+        self.can0_stream_box =  QCheckBox("Stream CAN0/J1939")
+        self.can0_stream_box.clicked.connect(self.send_stream_can0)
+        self.network_tab_layout.addWidget(self.can0_stream_box,0,0,1,1)
+
+        self.can1_stream_box =  QCheckBox("Stream CAN1/(PT CAN)")
+        self.can1_stream_box.clicked.connect(self.send_stream_can1)
+        self.network_tab_layout.addWidget(self.can1_stream_box,0,2,1,1)
+
+        #The CAN2 seems to be broken
+        self.can2_stream_box =  QCheckBox("Stream CAN2 (MCP CAN)")
+        self.can2_stream_box.clicked.connect(self.send_stream_can2)
+        #self.network_tab_layout.addWidget(self.can2_stream_box,0,4,1,1)
+
+        self.J1708_stream_box =  QCheckBox("Stream J1708/J1587")
+        self.J1708_stream_box.clicked.connect(self.send_stream_j1708)
+        self.network_tab_layout.addWidget(self.J1708_stream_box,0,6,1,1)
+
+        self.LIN_stream_box =  QCheckBox("Stream LIN")
+        self.LIN_stream_box.clicked.connect(self.send_stream_lin)
+        self.network_tab_layout.addWidget(self.LIN_stream_box,1,6,1,1)
+
+        self.LIN_suppress_box =  QCheckBox("Suppress LIN")
+        self.LIN_suppress_box.clicked.connect(self.send_supress_lin)
+        self.network_tab_layout.addWidget(self.LIN_suppress_box,2,6,1,1)
+
+        baud_label = QLabel("CAN0/J1939 Baudrate:")
+        self.network_tab_layout.addWidget(baud_label,1,0,1,1)
+        self.can0_baud_box = QComboBox()
+        self.can0_baud_box.addItem("Auto")
+        for speed in CAN_SPEEDS:
+            self.can0_baud_box.addItem("{}".format(speed))
+        self.can0_baud_box.activated.connect(self.change_can0_baud)
+        self.network_tab_layout.addWidget(self.can0_baud_box,1,1,1,1)
+
+        baud_label = QLabel("CAN1/PT-CAN Baudrate:")
+        self.network_tab_layout.addWidget(baud_label,1,2,1,1)
+        self.can1_baud_box = QComboBox()
+        self.can1_baud_box.addItem("Auto")
+        for speed in CAN_SPEEDS:
+            self.can1_baud_box.addItem("{}".format(speed))
+        self.can1_baud_box.activated.connect(self.change_can1_baud)
+        self.network_tab_layout.addWidget(self.can1_baud_box,1,3,1,1)
+
+        ## Creating Read CAN table
+        self.read_can_table = QTableView()
+        self.read_can_data_model = ReadCANTableModel()
+        self.read_can_table_proxy = Proxy()
+        self.read_can_table_columns = ["CH", "CAN-ID","timestamp", "dlc",
+                                   "B1","B2","B3","B4","B5","B6","B7","count"]
+        self.read_can_data_model.setDataHeader(self.read_can_table_columns)
+        self.read_can_table_proxy.setSourceModel(self.read_can_data_model)
+        self.read_can_table.setModel(self.read_can_table_proxy)
+
+        self.read_can_table.setSortingEnabled(True)
+        self.read_can_table.setWordWrap(False)
+        self.read_can_table.setSizeAdjustPolicy(QAbstractScrollArea.AdjustToContents)
+        self.read_can_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.read_can_table.setAlternatingRowColors(True)
+        self.network_tab_layout.addWidget(self.read_can_table,4,0,2,4)
+
+
+        baud_label = QLabel("CAN2/MCP-CAN Baudrate:")
+        #self.network_tab_layout.addWidget(baud_label,1,4,1,1)
+        self.can2_baud_box = QComboBox()
+        self.can2_baud_box.addItem("Auto")
+        for speed in CAN_SPEEDS:
+            self.can2_baud_box.addItem("{}".format(speed))
+        self.can2_baud_box.activated.connect(self.change_can2_baud)
+        #self.network_tab_layout.addWidget(self.can2_baud_box,1,5,1,1)
+
+        rx_label = QLabel("CAN0/J1939 Receive Count:")
+        self.network_tab_layout.addWidget(rx_label,2,0,1,1)
+        self.can0_rx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.can0_rx_count,2,1,1,1)
+
+        tx_label = QLabel("CAN0/J1939 Transmit Count:")
+        self.network_tab_layout.addWidget(tx_label,3,0,1,1)
+        self.can0_tx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.can0_tx_count,3,1,1,1)
+
+        rx_label = QLabel("CAN1/PT-CAN Receive Count:")
+        self.network_tab_layout.addWidget(rx_label,2,2,1,1)
+        self.can1_rx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.can1_rx_count,2,3,1,1)
+        
+        tx_label = QLabel("CAN1/PT-CAN Transmit Count:")
+        self.network_tab_layout.addWidget(tx_label,3,2,1,1)
+        self.can1_tx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.can1_tx_count,3,3,1,1)
+
+        rx_label = QLabel("CAN2/MCP-CAN Receive Count:")
+        #self.network_tab_layout.addWidget(rx_label,3,4,1,1)
+        self.can2_rx_count = QLineEdit()
+        #self.network_tab_layout.addWidget(self.can2_rx_count,3,5,1,1)
+        
+        rx_label = QLabel("CAN2/MCP-CAN Transmit Count:")
+        #self.network_tab_layout.addWidget(rx_label,3,4,1,1)
+        self.can2_tx_count = QLineEdit()
+        #self.network_tab_layout.addWidget(self.can2_tx_count,3,5,1,1)
+
+        # self.CAN_RX_text_box =  QPlainTextEdit(self)
+        # self.network_tab_layout.addWidget(self.CAN_RX_text_box,5,0,1,5)
+        
+        rx_label = QLabel("J1708/J1587 Receive Count:")
+        self.network_tab_layout.addWidget(rx_label,0,4,1,1)
+        self.j1708_rx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.j1708_rx_count,0,5,1,1)
+
+        rx_label = QLabel("LIN Receive Count:")
+        self.network_tab_layout.addWidget(rx_label,1,4,1,1)
+        self.lin_rx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.lin_rx_count,1,5,1,1)
+
+        tx_label = QLabel("LIN Transmit Count:")
+        self.network_tab_layout.addWidget(tx_label,2,4,1,1)
+        self.lin_tx_count = QLineEdit()
+        self.network_tab_layout.addWidget(self.lin_tx_count,2,5,1,1)
+    
     def clear_can_table(self):
         self.can_generator_dict = {}
         self.can_data_model.aboutToUpdate()
@@ -1726,109 +1969,6 @@ class SSS2Interface(QMainWindow):
     def write_file(self):
         self.send_command("SAVE")
 
-    def build_network_tab(self):
-        self.can0_stream_box =  QCheckBox("Stream CAN0/J1939")
-        self.can0_stream_box.clicked.connect(self.send_stream_can0)
-        self.network_tab_layout.addWidget(self.can0_stream_box,0,0,1,1)
-
-        self.can1_stream_box =  QCheckBox("Stream CAN1/(PT CAN)")
-        self.can1_stream_box.clicked.connect(self.send_stream_can1)
-        self.network_tab_layout.addWidget(self.can1_stream_box,0,2,1,1)
-
-        #The CAN2 seems to be broken
-        self.can2_stream_box =  QCheckBox("Stream CAN2 (MCP CAN)")
-        self.can2_stream_box.clicked.connect(self.send_stream_can2)
-        #self.network_tab_layout.addWidget(self.can2_stream_box,0,4,1,1)
-
-        self.J1708_stream_box =  QCheckBox("Stream J1708/J1587")
-        self.J1708_stream_box.clicked.connect(self.send_stream_j1708)
-        self.network_tab_layout.addWidget(self.J1708_stream_box,0,6,1,1)
-
-        self.LIN_stream_box =  QCheckBox("Stream LIN")
-        self.LIN_stream_box.clicked.connect(self.send_stream_lin)
-        self.network_tab_layout.addWidget(self.LIN_stream_box,1,6,1,1)
-
-        self.LIN_suppress_box =  QCheckBox("Suppress LIN")
-        self.LIN_suppress_box.clicked.connect(self.send_supress_lin)
-        self.network_tab_layout.addWidget(self.LIN_suppress_box,2,6,1,1)
-
-
-
-        baud_label = QLabel("CAN0/J1939 Baudrate:")
-        self.network_tab_layout.addWidget(baud_label,1,0,1,1)
-        self.can0_baud_box = QComboBox()
-        self.can0_baud_box.addItem("Auto")
-        for speed in CAN_SPEEDS:
-            self.can0_baud_box.addItem("{}".format(speed))
-        self.can0_baud_box.activated.connect(self.change_can0_baud)
-        self.network_tab_layout.addWidget(self.can0_baud_box,1,1,1,1)
-
-        baud_label = QLabel("CAN1/PT-CAN Baudrate:")
-        self.network_tab_layout.addWidget(baud_label,1,2,1,1)
-        self.can1_baud_box = QComboBox()
-        self.can1_baud_box.addItem("Auto")
-        for speed in CAN_SPEEDS:
-            self.can1_baud_box.addItem("{}".format(speed))
-        self.can1_baud_box.activated.connect(self.change_can1_baud)
-        self.network_tab_layout.addWidget(self.can1_baud_box,1,3,1,1)
-
-        baud_label = QLabel("CAN2/MCP-CAN Baudrate:")
-        #self.network_tab_layout.addWidget(baud_label,1,4,1,1)
-        self.can2_baud_box = QComboBox()
-        self.can2_baud_box.addItem("Auto")
-        for speed in CAN_SPEEDS:
-            self.can2_baud_box.addItem("{}".format(speed))
-        self.can2_baud_box.activated.connect(self.change_can2_baud)
-        #self.network_tab_layout.addWidget(self.can2_baud_box,1,5,1,1)
-
-        rx_label = QLabel("CAN0/J1939 Receive Count:")
-        self.network_tab_layout.addWidget(rx_label,2,0,1,1)
-        self.can0_rx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.can0_rx_count,2,1,1,1)
-
-        tx_label = QLabel("CAN0/J1939 Transmit Count:")
-        self.network_tab_layout.addWidget(tx_label,3,0,1,1)
-        self.can0_tx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.can0_tx_count,3,1,1,1)
-
-        rx_label = QLabel("CAN1/PT-CAN Receive Count:")
-        self.network_tab_layout.addWidget(rx_label,2,2,1,1)
-        self.can1_rx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.can1_rx_count,2,3,1,1)
-        
-        tx_label = QLabel("CAN1/PT-CAN Transmit Count:")
-        self.network_tab_layout.addWidget(tx_label,3,2,1,1)
-        self.can1_tx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.can1_tx_count,3,3,1,1)
-
-        rx_label = QLabel("CAN2/MCP-CAN Receive Count:")
-        #self.network_tab_layout.addWidget(rx_label,3,4,1,1)
-        self.can2_rx_count = QLineEdit()
-        #self.network_tab_layout.addWidget(self.can2_rx_count,3,5,1,1)
-        
-        rx_label = QLabel("CAN2/MCP-CAN Transmit Count:")
-        #self.network_tab_layout.addWidget(rx_label,3,4,1,1)
-        self.can2_tx_count = QLineEdit()
-        #self.network_tab_layout.addWidget(self.can2_tx_count,3,5,1,1)
-
-        self.CAN_RX_text_box =  QPlainTextEdit(self)
-        self.network_tab_layout.addWidget(self.CAN_RX_text_box,4,0,1,4)
-        
-        rx_label = QLabel("J1708/J1587 Receive Count:")
-        self.network_tab_layout.addWidget(rx_label,0,4,1,1)
-        self.j1708_rx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.j1708_rx_count,0,5,1,1)
-
-        rx_label = QLabel("LIN Receive Count:")
-        self.network_tab_layout.addWidget(rx_label,1,4,1,1)
-        self.lin_rx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.lin_rx_count,1,5,1,1)
-
-        tx_label = QLabel("LIN Transmit Count:")
-        self.network_tab_layout.addWidget(tx_label,2,4,1,1)
-        self.lin_tx_count = QLineEdit()
-        self.network_tab_layout.addWidget(self.lin_tx_count,2,5,1,1)
-        
     def change_can0_baud(self):
         selection = self.can0_baud_box.currentText()
         if "Auto" in selection:
@@ -1905,7 +2045,6 @@ class SSS2Interface(QMainWindow):
             else:
                 self.ignition_key_button.setChecked()
         self.send_command(commandString, COMMAND_TYPE)
-
 
     def init_gui(self):
         """Builds GUI."""
@@ -2099,6 +2238,96 @@ class Proxy(QSortFilterProxyModel):
 
     def headerData(self, section, orientation, role):
         return self.sourceModel().headerData(section, orientation, role)
+
+
+class ReadCANTableModel(QAbstractTableModel):
+    ''' data model for a J1939 Data class '''
+
+    def __init__(self):
+        super(ReadCANTableModel, self).__init__()
+        self.data_dict = {}
+        self.header = []
+        self.table_rows = []
+        self.table_edited = False
+
+    def setDataHeader(self, header):
+        self.header = header
+        self.first = self.header[0]
+        self.header_len = len(self.header)
+        print("Entered setDataHeader")
+
+    def setDataDict(self, new_dict):
+        # print("entered setDataDict", new_dict)
+        self.data_dict = new_dict
+        self.table_rows = list(sorted(new_dict.keys()))
+
+    def aboutToUpdate(self):
+        self.layoutAboutToBeChanged.emit()
+        # print("Entered aboutToUpdate")
+
+    def signalUpdate(self):
+        ''' tell viewers to update their data (this is full update, not
+        efficient)'''
+        self.layoutChanged.emit()
+
+    def headerData(self, section, orientation=Qt.Horizontal, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.header[section]
+        elif orientation == Qt.Vertical and role == Qt.DisplayRole:
+            return section + 1
+        else:
+            return QVariant()
+
+    def data(self, index, role=Qt.DisplayRole):
+        # print("entered data")
+        if index.isValid() and role == Qt.DisplayRole:
+            key = self.table_rows[index.row()]
+            col_name = self.header[index.column()]
+            return str(self.data_dict[key][col_name])
+        elif self.header[index.column()] == "Send" and role == Qt.CheckStateRole:
+            key = self.table_rows[index.row()]
+            col_name = self.header[index.column()]
+            return self.data_dict[key][col_name]
+        else:
+            return QVariant()
+
+    def flags(self, index):
+            flags = super(ReadCANTableModel, self).flags(index)
+            flags |= ~Qt.ItemIsEditable
+            # print("Flag: ",flags)
+            return Qt.ItemIsUserCheckable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsSelectable  # flags
+
+    def setData(self, index, value, role=Qt.DisplayRole):
+
+        if role == Qt.DisplayRole and index.isValid():
+            # self.dataChanged.emit(index, index)
+            return True
+        # elif (role == Qt.EditRole or role == Qt.CheckStateRole) and index.isValid():
+        #     print("entered setData at Row:", index.row(),
+        #           "Column:", index.column(), "Value:", value)
+        #     print("Role: ", role)
+        #     key = self.table_rows[index.row()]
+        #     col_name = self.header[index.column()]
+        #     # self.data_dict[key][col_name] = value
+        #     self.last_modified_row = index.row()
+        #     self.last_modified_column = index.column()
+        #     if col_name == "Send":
+        #         self.last_modified_value = value
+        #     else:
+        #         self.last_modified_value = value
+
+        #     self.dataChanged.emit(index, index)
+        #     # print("Modified Column",index.column())
+        #     return True
+        else:
+            print("False")
+            return False
+
+    def rowCount(self, index=QVariant()):
+        return len(self.data_dict)
+
+    def columnCount(self, index=QVariant()):
+        return len(self.header)
 
 
 
