@@ -1051,25 +1051,26 @@ class SSS2Interface(QMainWindow):
             # logger.info(can_message)
 
             can_id = "{:08X}".format(canID)
-            if can_id not in self.read_can_dict:
-                self.read_can_dict[can_id] = {}
-                self.read_can_dict[can_id]["count"] = 1
+            index = "ch_" + str(channel) + "_" + can_id
+            if index not in self.read_can_dict:
+                self.read_can_dict[index] = {}
+                self.read_can_dict[index]["count"] = 1
                 self.read_can_table.resizeRowsToContents()
                 self.read_can_table.scrollToBottom()
                 self.read_can_table.resizeColumnsToContents()
-            self.read_can_dict[can_id]["CH"] = channel
-            self.read_can_dict[can_id]["CAN-ID"] = can_id
-            self.read_can_dict[can_id]["timestamp"] = timestamp
-            self.read_can_dict[can_id]["dlc"] = dlc
-            self.read_can_dict[can_id]["B0"] = "{:02X}".format(can_data[0])
-            self.read_can_dict[can_id]["B1"] = "{:02X}".format(can_data[1])
-            self.read_can_dict[can_id]["B2"] = "{:02X}".format(can_data[2])
-            self.read_can_dict[can_id]["B3"] = "{:02X}".format(can_data[3])
-            self.read_can_dict[can_id]["B4"] = "{:02X}".format(can_data[4])
-            self.read_can_dict[can_id]["B5"] = "{:02X}".format(can_data[5])
-            self.read_can_dict[can_id]["B6"] = "{:02X}".format(can_data[6])
-            self.read_can_dict[can_id]["B7"] = "{:02X}".format(can_data[7])
-            self.read_can_dict[can_id]["count"] += 1
+            self.read_can_dict[index]["CH"] = channel
+            self.read_can_dict[index]["CAN-ID"] = can_id
+            self.read_can_dict[index]["timestamp"] = timestamp
+            self.read_can_dict[index]["dlc"] = dlc
+            self.read_can_dict[index]["B0"] = "{:02X}".format(can_data[0])
+            self.read_can_dict[index]["B1"] = "{:02X}".format(can_data[1])
+            self.read_can_dict[index]["B2"] = "{:02X}".format(can_data[2])
+            self.read_can_dict[index]["B3"] = "{:02X}".format(can_data[3])
+            self.read_can_dict[index]["B4"] = "{:02X}".format(can_data[4])
+            self.read_can_dict[index]["B5"] = "{:02X}".format(can_data[5])
+            self.read_can_dict[index]["B6"] = "{:02X}".format(can_data[6])
+            self.read_can_dict[index]["B7"] = "{:02X}".format(can_data[7])
+            self.read_can_dict[index]["count"] += 1
         
         self.read_can_data_model.aboutToUpdate()
         self.read_can_data_model.setDataDict(self.read_can_dict)
