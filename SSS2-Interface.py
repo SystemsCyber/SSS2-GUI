@@ -384,7 +384,7 @@ class USBThread(threading.Thread):
             # time.sleep(0.001)
             try:
                 data_stream = bytes(self.root.sss.read(USB_HID_INPUT_ENDPOINT_ADDRESS, USB_HID_LENGTH,0)) #USB_HID_TIMEOUT
-                # logger.debug(data_stream)
+                logger.debug(data_stream)
                 data_stream_crc = data_stream[62:64]
                 calculated_crc = crc16_ccitt(0xFFFF, data_stream[0:62])
                 if data_stream_crc == calculated_crc:
@@ -401,20 +401,20 @@ class USBThread(threading.Thread):
                 if "claim_interface" in b:
                     logger.debug("Claim Interface Error")
                     logger.debug(sys.exc_info()[1])
-                break
+                return
             except AttributeError:
                 logger.debug("Broke here 2")
                 logger.debug(sys.exc_info()[1])
-                break
+                return
             except:
-                logger.debug("UBroke here 3")
+                logger.debug("Broke here 3")
                 logger.debug(traceback.format_exc())
-                break
+                return
         logger.debug("USBThread Ending.")
         
         try:
-            dispose_resources(self.root.sss)
-            # usb.util.release_interface(self.root.sss,self.root.sss_interface)
+            #dispose_resources(self.root.sss)
+            usb.util.release_interface(self.root.sss,self.root.sss_interface)
         except:
             logger.debug("Unable to Release USB.")
         self.root.usb_signal = False

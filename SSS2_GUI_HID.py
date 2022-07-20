@@ -14,7 +14,8 @@ print("Backend: ",backend)
 
 
 
-# must have usblib installed.
+# must have libusb-win32 installed.
+# use Zdiag
 
 USB_HID_OUTPUT_ENDPOINT_ADDRESS = 0x02
 USB_HID_INPUT_ENDPOINT_ADDRESS = 0x81
@@ -111,7 +112,7 @@ sss.set_configuration()
 # get an endpoint instance
 cfg = sss.get_active_configuration()
 sss_interface = cfg[(0,0)]
-5
+
 
 data = b'\x10,1,32,2,33,3,34,4,42,17,42,50,1' 
 padded_data = data + bytes([0 for i in range(62 - len(data))])
